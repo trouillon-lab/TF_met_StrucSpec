@@ -4,6 +4,7 @@ alphafold3:
   predictions:
     run_alphafold_args: >-
       --num_recycles=3
+      --max_template_date=2099-01-01
 
 gnina:
   mode: "redock"  # Options: "score_only", "minimize", "redock"
