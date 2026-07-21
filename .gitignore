@@ -27,3 +27,4 @@ results/
 workflow
 config.yaml
 bin/
+software/batch-infer
