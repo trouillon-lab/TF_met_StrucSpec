@@ -3,8 +3,8 @@
 #SBATCH --output=logs/pipeline_%j.out
 #SBATCH --error=logs/pipeline_%j.err
 #SBATCH --time=04:00:00
-#SBATCH --mem=16G
 #SBATCH --cpus-per-task=8
+#SBATCH --mem-per-cpu=2G
 #SBATCH --gpus=1
 
 # ==============================================================================

@@ -3,8 +3,8 @@
 #SBATCH --output=logs/task_%A_%a.out
 #SBATCH --error=logs/task_%A_%a.err
 #SBATCH --time=01:00:00
-#SBATCH --mem=12G
 #SBATCH --cpus-per-task=4
+#SBATCH --mem-per-cpu=3G
 #SBATCH --gpus=1
 
 # ==============================================================================

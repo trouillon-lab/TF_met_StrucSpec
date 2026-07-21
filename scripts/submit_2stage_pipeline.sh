@@ -40,8 +40,8 @@ DATAFILL_JOB_OUT=$(sbatch --parsable \
     --output=logs/datafill_%j.out \
     --error=logs/datafill_%j.err \
     --time=02:00:00 \
-    --mem=16G \
     --cpus-per-task=8 \
+    --mem-per-cpu=2G \
     --wrap="batch-infer alphafold3 datafill --config config/config.yaml --input-dir alphafold3_jsons --output-dir alphafold3_datafill --missing-dir alphafold3_missing" 2>/dev/null || echo "LOCAL_DATAFILL")
 
 echo "Submitted Stage 1 Datafill Job ID: $DATAFILL_JOB_OUT"
