@@ -9,8 +9,9 @@ alphafold3_msas/
 alphafold3_predictions/
 
 # SLURM output/error logs
-logs/*.out
-logs/*.err
+logs/
+*.out
+*.err
 
 # Python Virtual Environment and Caching
 venv/
@@ -23,9 +24,8 @@ __pycache__/
 .coverage
 htmlcov/
 
-# Local data processed cache files
-data/processed/gnina_scores.csv
-data/processed/temp_structures/
+# Local data directory (raw, processed, temporary structures)
+data/
 
 # OS metadata
 .DS_Store
