@@ -27,9 +27,13 @@ elif [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
-# Ensure batch-infer package activate symlinks exist
-mkdir -p venv/lib/python3.10/.venv/bin 2>/dev/null || true
-ln -sf ../../../bin/activate venv/lib/python3.10/.venv/bin/activate 2>/dev/null || true
+# Ensure batch-infer package activate symlinks exist with absolute paths
+PY_VER_DIR=$(ls -d venv/lib/python3.*/ 2>/dev/null | head -n 1)
+if [ -n "$PY_VER_DIR" ]; then
+    mkdir -p "${PY_VER_DIR}.venv/bin"
+    ln -sf "$(pwd)/venv/bin/activate" "${PY_VER_DIR}.venv/bin/activate"
+fi
+
 ln -sf config/config.yaml config.yaml 2>/dev/null || true
 
 # Run python diagnostic check
