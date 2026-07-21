@@ -18,7 +18,7 @@ echo "========================================================================"
 
 # Load Euler modules
 module load eth_proxy 2>/dev/null || true
-module load stack/2024-06 2>/dev/null || module load stack/2024-05 2>/dev/null || true
+module load stack/2025-06 python/3.13.0 2>/dev/null || module load stack/2024-06 2>/dev/null || true
 module load gcc python openbabel cuda 2>/dev/null || true
 
 if [ -f "venv/bin/activate" ]; then

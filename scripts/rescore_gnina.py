@@ -60,6 +60,8 @@ def write_pdb(atoms, chain_to_keep, output_path):
             serial = atom.get('_atom_site.id', str(idx + 1))
             name = atom.get('_atom_site.label_atom_id', 'C')
             res_name = atom.get('_atom_site.label_comp_id', 'UNK')
+            if len(res_name) > 3:
+                res_name = res_name[:3]
             res_seq = atom.get('_atom_site.auth_seq_id') or atom.get('_atom_site.label_seq_id') or '1'
             res_seq = "".join(c for c in res_seq if c.isdigit())
             if not res_seq:
@@ -80,7 +82,7 @@ def write_pdb(atoms, chain_to_keep, output_path):
             
             element_str = f"{element:>2}"
             
-            line = f"{group:<6}{int(serial):>5} {name_str}{res_name:>3} {chain}{int(res_seq):>4}    {x:8.3f}{y:8.3f}{z:8.3f}{occupancy:6.2f}{b_factor:6.2f}          {element_str}\n"
+            line = f"{group:<6}{int(serial):>5} {name_str}{res_name:>3} {chain}{int(res_seq):>4}    {x:8.3f}{y:8.3f}{z:8.3f}{occupancy:6.2f}{b_factor:6.2f}          {element_str:>2}\n"
             f.write(line)
         f.write("END\n")
 
@@ -97,39 +99,29 @@ def parse_gnina_output(stdout_text):
     if affinity_match:
         cnn_affinity = float(affinity_match.group(1))
         
-    if cnn_score is None or cnn_affinity is None:
-        lines = stdout_text.splitlines()
-        header_idx = -1
-        score_col = -1
-        aff_col = -1
-        
-        for idx, line in enumerate(lines):
-            if "cnn_pose_score" in line or "CNNscore" in line or "cnnscore" in line.lower():
-                header_idx = idx
-                cols = line.lower().replace("|", " ").split()
-                for c_idx, col in enumerate(cols):
-                    if "cnn_pose_score" in col or "cnnscore" in col:
-                        score_col = c_idx
-                    elif "cnn_affinity" in col:
-                        aff_col = c_idx
-                break
-                
-        if header_idx != -1 and score_col != -1 and aff_col != -1:
-            for line in lines[header_idx + 1:]:
-                line = line.strip()
-                if not line:
+    if cnn_score is not None and cnn_affinity is not None:
+        return cnn_score, cnn_affinity
+
+    lines = stdout_text.splitlines()
+    for idx, line in enumerate(lines):
+        if "-----" in line or "=====" in line:
+            for data_line in lines[idx + 1:]:
+                data_line = data_line.strip()
+                if not data_line or "-----" in data_line or "=====" in data_line or "Using" in data_line:
                     continue
-                if "-----" in line or "=====" in line:
-                    continue
-                parts = line.replace("|", " ").split()
-                if len(parts) > max(score_col, aff_col):
+                parts = data_line.replace("|", " ").split()
+                if len(parts) >= 4:
                     try:
-                        cnn_score = float(parts[score_col])
-                        cnn_affinity = float(parts[aff_col])
-                        break
-                    except ValueError:
+                        if len(parts) >= 5:
+                            cnn_score = float(parts[3])
+                            cnn_affinity = float(parts[4])
+                        else:
+                            cnn_score = float(parts[2])
+                            cnn_affinity = float(parts[3])
+                        return cnn_score, cnn_affinity
+                    except (ValueError, IndexError):
                         continue
-                        
+                    
     return cnn_score, cnn_affinity
 
 def rescore_pair(zip_path, temp_root, mode, autobox_add):
@@ -194,11 +186,11 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add):
         cmd = [gnina_bin, "-r", protein_pdb, "-l", ligand_path]
         
         if mode == "score_only":
-            cmd.append("--score_only")
+            cmd.extend(["--score_only", "--cpu", "4"])
         elif mode == "minimize":
-            cmd.extend(["--minimize", "--autobox_ligand", ligand_path, "--autobox_add", str(autobox_add)])
+            cmd.extend(["--minimize", "--autobox_ligand", ligand_path, "--autobox_add", str(autobox_add), "--cpu", "4"])
         elif mode == "redock":
-            cmd.extend(["--autobox_ligand", ligand_path, "--autobox_add", str(autobox_add)])
+            cmd.extend(["--autobox_ligand", ligand_path, "--autobox_add", str(autobox_add), "--cpu", "4"])
         else:
             print(f"Error: Unknown Gnina mode '{mode}'. Defaulting to score_only.")
             cmd.append("--score_only")

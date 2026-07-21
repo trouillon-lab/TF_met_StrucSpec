@@ -1,11 +1,16 @@
 alphafold3:
+  model_dir: /cluster/project/beltrao/lucla/alphafold_models
+  max_template_date: '2099-01-01'
   data_sources: >-
     --data_dir=./alphafold3_msas
   predictions:
+    slurm_extra: '--gpus=1'
+    singularity_args: '--env XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"'
     run_alphafold_args: >-
       --num_recycles=3
       --max_template_date=2099-01-01
-      --model_dir=/cluster/project/beltrao/lucla/alphafold_models/af3.bin.zst
+      --flash_attention_implementation=xla
+      --model_dir=/root/models/af3.bin.zst
 
 gnina:
   mode: "redock"  # Options: "score_only", "minimize", "redock"

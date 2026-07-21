@@ -1,0 +1,22 @@
+{
+  "dialect": "alphafold3",
+  "version": 2,
+  "name": "AcrR_L-phenylalanine",
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "MARKTKQEAQETRQHILDVALRLFSQQGVSSTSLGEIAKAAGVTRGAIYWHFKDKSDLFSEIWELSESNIGELELEYQAKFPGDPLSVLREILIHVLESTVTEERRRLLMEIIFHKCEFVGEMAVVQQAQRNLCLESYDRIEQTLKHCIEAKMLPADLMTRRAAIIMRGYISGLMENWLFAPQSFDLKKEARDYVAILLEMYLLCPTLRNPATNE"
+      }
+    },
+    {
+      "ligand": {
+        "id": "B",
+        "smiles": "C1=CC=C(C=C1)C[C@@H](C(=O)O)N"
+      }
+    }
+  ],
+  "modelSeeds": [
+    1
+  ]
+}

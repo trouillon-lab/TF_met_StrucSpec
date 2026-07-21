@@ -1,0 +1,22 @@
+{
+  "dialect": "alphafold3",
+  "version": 2,
+  "name": "AcrR_arabinose",
+  "sequences": [
+    {
+      "protein": {
+        "id": "A",
+        "sequence": "MARKTKQEAQETRQHILDVALRLFSQQGVSSTSLGEIAKAAGVTRGAIYWHFKDKSDLFSEIWELSESNIGELELEYQAKFPGDPLSVLREILIHVLESTVTEERRRLLMEIIFHKCEFVGEMAVVQQAQRNLCLESYDRIEQTLKHCIEAKMLPADLMTRRAAIIMRGYISGLMENWLFAPQSFDLKKEARDYVAILLEMYLLCPTLRNPATNE"
+      }
+    },
+    {
+      "ligand": {
+        "id": "B",
+        "smiles": "C1[C@@H]([C@@H]([C@H]([C@@H](O1)O)O)O)O"
+      }
+    }
+  ],
+  "modelSeeds": [
+    1
+  ]
+}

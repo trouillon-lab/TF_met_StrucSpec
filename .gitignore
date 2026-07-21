@@ -1,31 +1,29 @@
-# Project State & Scope Documents (untracked local logs)
-project_scope.md
-pipeline_state.md
-
-# AlphaFold 3 Input/Output and MSA Cache directories
-alphafold3_jsons/
-alphafold3_missing/
-alphafold3_msas/
-alphafold3_predictions/
-
-# SLURM output/error logs
-logs/
-*.out
-*.err
-
-# Python Virtual Environment and Caching
-venv/
-.venv/
+# Byte-compiled / optimized files
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.pytest_cache/
-.coverage
-htmlcov/
+*$py.class
 
-# Local data directory (raw, processed, temporary structures)
-data/
+# Virtual environments
+venv/
+venv*/
+.venv/
 
-# OS metadata
-.DS_Store
+# Cluster build logs & Snakemake temporary files
+.snakemake*/
+.batch-infer.*
+logs/*.out
+logs/*.err
+logs/*.log
+
+# Generated data & predictions (large binary artifacts / pipeline outputs)
+alphafold3_predictions/
+alphafold3_msas/
+alphafold3_datafill/
+alphafold3_missing/
+data/processed/
+results/
+
+# Symlinks and binary executables created during setup
+workflow
+config.yaml
+bin/
