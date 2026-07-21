@@ -6,5 +6,5 @@ alphafold3:
       --num_recycles=3
 
 gnina:
-  mode: "minimize"  # Options: "score_only", "minimize", "redock"
+  mode: "redock"  # Options: "score_only", "minimize", "redock"
   autobox_add: 8.0  # Box size expansion in Angstroms around AF3 ligand for redocking/minimization

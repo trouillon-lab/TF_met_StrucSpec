@@ -16,14 +16,21 @@ echo " Starting Submission at $(date) on host $(hostname)"
 echo " Workspace: $(pwd)"
 echo "========================================================================"
 
-# Load modules and activate venv
-module load gcc python openbabel 2>/dev/null || true
+# Load Euler modules (with eth_proxy for network access on computing nodes)
+module load eth_proxy 2>/dev/null || true
+module load stack/2024-06 2>/dev/null || module load stack/2024-05 2>/dev/null || true
+module load gcc python openbabel cuda 2>/dev/null || true
 
 if [ -f "venv/bin/activate" ]; then
     source venv/bin/activate
 elif [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
+
+# Ensure batch-infer package activate symlinks exist
+mkdir -p venv/lib/python3.10/.venv/bin 2>/dev/null || true
+ln -sf ../../../bin/activate venv/lib/python3.10/.venv/bin/activate 2>/dev/null || true
+ln -sf config/config.yaml config.yaml 2>/dev/null || true
 
 # Run python diagnostic check
 python3 scripts/diagnose_environment.py || echo "Warning: Diagnostics reported missing items."
