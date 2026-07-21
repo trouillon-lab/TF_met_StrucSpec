@@ -2,6 +2,7 @@
 __pycache__/
 *.pyc
 *$py.class
+.DS_Store
 
 # Virtual environments
 venv/
@@ -11,20 +12,24 @@ venv*/
 # Cluster build logs & Snakemake temporary files
 .snakemake*/
 .batch-infer.*
-logs/*.out
-logs/*.err
-logs/*.log
+logs/
 
-# Generated data & predictions (large binary artifacts / pipeline outputs)
+# Generated data, input JSONs & predictions (pipeline data/artifacts)
+alphafold3_jsons/
+alphafold3_jsons_remaining/
 alphafold3_predictions/
 alphafold3_msas/
 alphafold3_datafill/
 alphafold3_missing/
-data/processed/
+data/
 results/
 
-# Symlinks and binary executables created during setup
+# Project state tracking & scratch files (untracked per repo rules)
+pipeline_state.md
+project_scope.md
+
+# Symlinks, submodules and binary executables created during setup
 workflow
 config.yaml
 bin/
-software/batch-infer
+software/
