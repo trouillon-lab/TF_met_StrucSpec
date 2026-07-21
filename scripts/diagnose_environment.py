@@ -9,6 +9,7 @@ import sys
 import glob
 import shutil
 import subprocess
+from pathlib import Path
 
 def check_mark(status):
     return " [OK]" if status else " [FAIL]"
@@ -41,7 +42,6 @@ def run_diagnostics():
     # Check batch_infer & setup dynamic symlinks if needed
     try:
         import batch_infer
-        from pathlib import Path
         base_dir = Path(batch_infer.__file__).parent.parent.parent
         print(f"   Package 'batch_infer': Installed at {base_dir}{check_mark(True)}")
 
@@ -56,19 +56,17 @@ def run_diagnostics():
         # Check workflow directory
         wf_dir = base_dir / "workflow"
         if not wf_dir.exists():
-            print(f"   Notice: Setting up batch_infer workflow symlink...")
-            # Search site-packages or git clone for workflow
-            found_wf = None
-            for p in sys.path:
-                matches = glob.glob(os.path.join(p, "**", "workflow"), recursive=True)
-                if matches and os.path.isdir(matches[0]):
-                    found_wf = matches[0]
-                    break
-            if found_wf:
-                os.symlink(found_wf, str(wf_dir))
-                print(f"   Workflow symlink created: {wf_dir} -> {found_wf}{check_mark(True)}")
+            print(f"   Notice: Setting up batch_infer workflow repository in software/batch-infer...")
+            sw_dir = Path("software/batch-infer")
+            if not sw_dir.exists():
+                subprocess.run(["git", "clone", "-b", "develop", "https://github.com/jurgjn/batch-infer.git", str(sw_dir)], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            
+            src_wf = sw_dir / "workflow"
+            if src_wf.exists():
+                os.symlink(str(src_wf.resolve()), str(wf_dir))
+                print(f"   Workflow symlink created: {wf_dir} -> {src_wf}{check_mark(True)}")
             else:
-                print(f"   Warning: workflow directory not found under {base_dir}{check_mark(False)}")
+                print(f"   Warning: workflow directory not found under {sw_dir}{check_mark(False)}")
 
     except ImportError:
         print(f"   Package 'batch_infer': Missing!{check_mark(False)}")
