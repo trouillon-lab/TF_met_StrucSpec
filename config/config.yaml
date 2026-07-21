@@ -1,0 +1,10 @@
+alphafold3:
+  data_sources: >-
+    --data_dir=./alphafold3_msas
+  predictions:
+    run_alphafold_args: >-
+      --num_recycles=3
+
+gnina:
+  mode: "minimize"  # Options: "score_only", "minimize", "redock"
+  autobox_add: 8.0  # Box size expansion in Angstroms around AF3 ligand for redocking/minimization

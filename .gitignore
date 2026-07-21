@@ -1,0 +1,31 @@
+# Project State & Scope Documents (untracked local logs)
+project_scope.md
+pipeline_state.md
+
+# AlphaFold 3 Input/Output and MSA Cache directories
+alphafold3_jsons/
+alphafold3_missing/
+alphafold3_msas/
+alphafold3_predictions/
+
+# SLURM output/error logs
+logs/*.out
+logs/*.err
+
+# Python Virtual Environment and Caching
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local data processed cache files
+data/processed/gnina_scores.csv
+data/processed/temp_structures/
+
+# OS metadata
+.DS_Store
