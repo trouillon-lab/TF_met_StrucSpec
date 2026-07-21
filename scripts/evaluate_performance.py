@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 Primitive Classification & Ranking Evaluation Script
-Evaluates ROC AUC, PR AUC, and Top-1 Accuracy comparing AF3 alone, GNINA alone, and Consensus (AF3+GNINA).
+Evaluates ROC AUC, PR AUC, and Top-1 Accuracy comparing AF3 alone, GNINA alone, and Consensus (AF3+GNINA)
+across the 20-pair diagnostic dataset (10 positive controls + 10 negative controls).
 """
 
 import os
@@ -65,16 +66,22 @@ def compute_pr_auc(y_true, y_scores):
 def main():
     report_csv = 'results/ranked_pairings_report.csv'
     
-    # Ground truth positive controls in 20-pair diagnostic dataset
+    # Ground truth: 10 Positive Pairs + 10 Negative Pairs
     true_positive_pairs = {
+        "AraC_arabinose",
         "AraC_D-fucose",
+        "AcrR_ethidium",
         "AcrR_proflavin",
-        "CysB_Thiosulphate",
-        "TyrR_L-phenylalanine"
+        "AcrR_R6G",
+        "TyrR_L-tryptophan",
+        "TyrR_L-phenylalanine",
+        "TyrR_L-tyrosine",
+        "CysB_O-acetyl-L-serine",
+        "CysB_Thiosulphate"
     }
     
     if not os.path.exists(report_csv):
-        print(f"Error: '{report_csv}' not found. Please run scripts/rank_candidates.py first.")
+        print(f"Error: '{report_csv}' not found. Run scripts/rank_candidates.py first.")
         return
         
     rows = []
@@ -91,6 +98,9 @@ def main():
             rows.append(r)
             
     y_true = [r['is_tp'] for r in rows]
+    n_pos = sum(y_true)
+    n_neg = len(y_true) - n_pos
+    print(f"Dataset summary: {n_pos} Positive Pairs, {n_neg} Negative Pairs (Total {len(y_true)} pairs)")
     
     scores = {
         "AF3 Alone (AF3_Score)": [r['AF3_Score'] for r in rows],
@@ -105,7 +115,6 @@ def main():
     print(f"{'Method / Scoring Metric':<30} | {'ROC AUC':<10} | {'PR AUC':<10} | {'Top-1 Accuracy':<15}")
     print("-"*85)
     
-    # Calculate Top-1 accuracy per TF
     tf_groups = {}
     for r in rows:
         tf = r['TF_Name']
@@ -117,7 +126,6 @@ def main():
         roc_auc = compute_roc_auc(y_true, s_list)
         pr_auc = compute_pr_auc(y_true, s_list)
         
-        # Top 1 accuracy calculation
         top1_count = 0
         key_map = {
             "AF3 Alone (AF3_Score)": "AF3_Score",
