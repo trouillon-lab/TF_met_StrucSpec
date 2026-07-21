@@ -6,6 +6,7 @@ Verifies software binaries, Python environment, directory structures, input file
 
 import os
 import sys
+import glob
 import shutil
 import subprocess
 
@@ -36,7 +37,42 @@ def run_diagnostics():
         except ImportError:
             print(f"   Package '{pkg}': Missing!{check_mark(False)}")
             all_ok = False
-            
+
+    # Check batch_infer & setup dynamic symlinks if needed
+    try:
+        import batch_infer
+        from pathlib import Path
+        base_dir = Path(batch_infer.__file__).parent.parent.parent
+        print(f"   Package 'batch_infer': Installed at {base_dir}{check_mark(True)}")
+
+        # Ensure .venv symlink inside package base
+        venv_act = base_dir / ".venv" / "bin" / "activate"
+        if not venv_act.exists():
+            (base_dir / ".venv" / "bin").mkdir(parents=True, exist_ok=True)
+            real_act = Path(sys.prefix) / "bin" / "activate"
+            if real_act.exists():
+                os.symlink(str(real_act), str(venv_act))
+
+        # Check workflow directory
+        wf_dir = base_dir / "workflow"
+        if not wf_dir.exists():
+            print(f"   Notice: Setting up batch_infer workflow symlink...")
+            # Search site-packages or git clone for workflow
+            found_wf = None
+            for p in sys.path:
+                matches = glob.glob(os.path.join(p, "**", "workflow"), recursive=True)
+                if matches and os.path.isdir(matches[0]):
+                    found_wf = matches[0]
+                    break
+            if found_wf:
+                os.symlink(found_wf, str(wf_dir))
+                print(f"   Workflow symlink created: {wf_dir} -> {found_wf}{check_mark(True)}")
+            else:
+                print(f"   Warning: workflow directory not found under {base_dir}{check_mark(False)}")
+
+    except ImportError:
+        print(f"   Package 'batch_infer': Missing!{check_mark(False)}")
+
     # 3. Check Binaries (sbatch, batch-infer, gnina, obabel)
     print("\n2. Executable & Binary Checks:")
     sbatch_path = shutil.which("sbatch")
