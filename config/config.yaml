@@ -5,6 +5,7 @@ alphafold3:
     run_alphafold_args: >-
       --num_recycles=3
       --max_template_date=2099-01-01
+      --model_dir=/cluster/project/beltrao/lucla/alphafold_models/af3.bin.zst
 
 gnina:
   mode: "redock"  # Options: "score_only", "minimize", "redock"
