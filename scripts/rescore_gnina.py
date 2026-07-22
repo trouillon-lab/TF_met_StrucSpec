@@ -124,8 +124,8 @@ def parse_gnina_output(stdout_text):
                     
     return cnn_score, cnn_affinity
 
-def rescore_pair(zip_path, temp_root, mode, autobox_add):
-    """Rescores a single prediction pair."""
+def rescore_pair(zip_path, temp_root, mode, autobox_add, save_dir="data/processed/gnina_redocked_structures"):
+    """Rescores a single prediction pair and saves AF3 + GNINA redocked structures."""
     basename = os.path.basename(zip_path)
     pair_name = os.path.splitext(basename)[0]
     
@@ -158,6 +158,7 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add):
         protein_pdb = os.path.join(temp_dir, "protein.pdb")
         ligand_pdb = os.path.join(temp_dir, "ligand.pdb")
         ligand_sdf = os.path.join(temp_dir, "ligand.sdf")
+        gnina_out_sdf = os.path.join(temp_dir, "gnina_redocked.sdf")
         
         write_pdb(atoms, "A", protein_pdb)
         write_pdb(atoms, "B", ligand_pdb)
@@ -183,7 +184,7 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add):
         elif os.path.exists("./gnina"):
             gnina_bin = os.path.abspath("./gnina")
             
-        cmd = [gnina_bin, "-r", protein_pdb, "-l", ligand_path]
+        cmd = [gnina_bin, "-r", protein_pdb, "-l", ligand_path, "-o", gnina_out_sdf]
         
         if mode == "score_only":
             cmd.extend(["--score_only", "--cpu", "4"])
@@ -198,7 +199,6 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add):
         # Run Gnina
         if gnina_bin == "gnina" and not shutil.which("gnina"):
             print("Warning: 'gnina' executable not found on PATH. Simulating scores for validation.")
-            # Return mock scores for testing
             return {"TF_Ligand": pair_name, "CNNscore": 0.85, "CNNaffinity": 6.5, "Gnina_Mode": mode}
             
         res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
@@ -211,6 +211,26 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add):
         if cnn_score is None or cnn_affinity is None:
             print(f"Warning: Could not parse Gnina output for {pair_name}")
             return None
+
+        # Preserve structures if save_dir is specified
+        if save_dir:
+            pair_save_dir = os.path.join(save_dir, pair_name)
+            os.makedirs(pair_save_dir, exist_ok=True)
+            shutil.copy2(protein_pdb, os.path.join(pair_save_dir, "af3_protein.pdb"))
+            if os.path.exists(ligand_sdf):
+                shutil.copy2(ligand_sdf, os.path.join(pair_save_dir, "af3_ligand.sdf"))
+            shutil.copy2(ligand_pdb, os.path.join(pair_save_dir, "af3_ligand.pdb"))
+            
+            if os.path.exists(gnina_out_sdf):
+                shutil.copy2(gnina_out_sdf, os.path.join(pair_save_dir, "gnina_redocked.sdf"))
+                if shutil.which("obabel"):
+                    try:
+                        subprocess.run(
+                            ["obabel", gnina_out_sdf, "-O", os.path.join(pair_save_dir, "gnina_redocked.pdb")],
+                            check=False, stdout=subprocess.PIPE, stderr=subprocess.PIPE
+                        )
+                    except Exception:
+                        pass
             
         return {
             "TF_Ligand": pair_name,
