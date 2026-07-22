@@ -161,28 +161,25 @@ def generate_svg_slopegraph(validation_data, output_path):
     print(f"Generated validation SVG plot at '{output_path}'.")
 
 def load_true_positives(pairings_csv):
-    """Loads true positives from pairings CSV or defaults to the 10 diagnostic ground truth positives."""
+    """Loads true positives from dataset CSV files."""
     tp_set = {
         "AraC_arabinose", "AraC_D-fucose",
         "AcrR_ethidium", "AcrR_proflavin", "AcrR_R6G",
         "TyrR_L-tryptophan", "TyrR_L-phenylalanine", "TyrR_L-tyrosine",
         "CysB_O-acetyl-L-serine", "CysB_Thiosulphate"
     }
-    if not os.path.exists(pairings_csv):
-        return tp_set
-        
-    with open(pairings_csv, mode='r', encoding='utf-8') as f:
-        reader = csv.DictReader(f)
-        if reader.fieldnames and 'Is_True_Positive' in reader.fieldnames:
-            csv_tp = set()
+    
+    # Read remaining 248 dataset csv if present
+    rem_csv = 'data/processed/pairings_remaining_248.csv'
+    if os.path.exists(rem_csv):
+        with open(rem_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
             for row in reader:
-                is_tp = row.get('Is_True_Positive', '').strip().lower()
-                if is_tp in ['true', '1', 'yes', 't', 'positive']:
+                if row.get('Label', '').strip().lower() == 'positive':
                     tf = row['TF_Name'].strip()
                     lig = row['Ligand_Name'].strip()
-                    csv_tp.add(f"{tf}_{lig}")
-            if csv_tp:
-                return csv_tp
+                    tp_set.add(f"{tf}_{lig}")
+                    
     return tp_set
 
 def main():

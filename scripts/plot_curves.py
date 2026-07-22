@@ -45,8 +45,8 @@ def load_data(report_csv='results/ranked_pairings_report.csv'):
     with open(report_csv, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            pair = row['TF_Ligand']
-            label = 1 if (pair in TRUE_POSITIVES or row.get('Is_True_Positive', '').lower() in ['true', '1', 'yes']) else 0
+            is_tp = row.get('Is_True_Positive', '').strip().lower() in ['true', '1', 'yes', 't', 'positive']
+            label = 1 if is_tp else 0
             y_true.append(label)
             
             metrics_data["AF3 ipTM"].append(float(row['AF3_ipTM']))
@@ -151,7 +151,7 @@ def generate_plots(y_true, metrics_data, svg_path='results/roc_pr_curves.svg', p
     ax_pr.legend(loc="lower left", frameon=True, facecolor='white', framealpha=0.9, fontsize=9.5)
     ax_pr.grid(True, linestyle=':', alpha=0.6)
 
-    plt.suptitle("Virtual Screening Evaluation: TF-Small Molecule Specificity (20 Diagnostic Pairs)", fontsize=15, fontweight='bold', y=0.98)
+    plt.suptitle("Virtual Screening Evaluation: TF-Small Molecule Specificity (262 Screening Pairs)", fontsize=15, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     # Save vector SVG and raster PNG

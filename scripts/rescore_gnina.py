@@ -229,9 +229,32 @@ def main():
     parser.add_argument('--config', default='config/config.yaml', help="Path to config.yaml")
     parser.add_argument('--predictions-dir', default='alphafold3_predictions', help="AF3 predictions dir")
     parser.add_argument('--output', default='data/processed/gnina_scores.csv', help="Path to write scores csv")
+    parser.add_argument('--batch-index', type=int, default=1, help="Current SLURM job array task 1-indexed ID")
+    parser.add_argument('--total-batches', type=int, default=1, help="Total number of parallel batch tasks")
+    parser.add_argument('--merge', action='store_true', help="Merge chunk CSV files into final output CSV")
     
     args = parser.parse_args()
     
+    if args.merge:
+        chunk_dir = os.path.dirname(args.output)
+        chunk_files = [os.path.join(chunk_dir, f) for f in os.listdir(chunk_dir) if f.startswith("gnina_chunk_") and f.endswith(".csv")]
+        chunk_files.sort()
+        
+        all_rows = []
+        for cf in chunk_files:
+            with open(cf, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+                if len(lines) > 1:
+                    all_rows.extend([l for l in lines[1:] if l.strip()])
+                    
+        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        with open(args.output, 'w', encoding='utf-8') as out_f:
+            out_f.write("TF_Ligand,CNNscore,CNNaffinity,Gnina_Mode\n")
+            out_f.writelines(all_rows)
+            
+        print(f"Merged {len(chunk_files)} chunk CSV files into '{args.output}' ({len(all_rows)} total rescored pairs).")
+        return
+
     # Load configuration
     mode = "minimize"
     autobox_add = 8.0
@@ -242,43 +265,55 @@ def main():
                 mode = cfg['gnina'].get('mode', mode)
                 autobox_add = cfg['gnina'].get('autobox_add', autobox_add)
                 
-    print(f"Configured Gnina Mode: '{mode}' with autobox expansion: {autobox_add} Å")
+    print(f"Configured Gnina Mode: '{mode}' with autobox expansion: {autobox_add} Å (Batch {args.batch_index}/{args.total_batches})")
     
     if not os.path.exists(args.predictions_dir):
         print(f"Error: Predictions directory '{args.predictions_dir}' not found.")
         sys.exit(1)
         
-    zip_files = [os.path.join(args.predictions_dir, f) for f in os.listdir(args.predictions_dir) if f.endswith('.zip')]
-    if not zip_files:
+    all_zip_files = sorted([os.path.join(args.predictions_dir, f) for f in os.listdir(args.predictions_dir) if f.endswith('.zip')])
+    if not all_zip_files:
         print("No completed prediction ZIP files found to rescore.")
-        # Create empty scores file if none
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
         with open(args.output, 'w') as f:
             f.write("TF_Ligand,CNNscore,CNNaffinity,Gnina_Mode\n")
         sys.exit(0)
         
-    temp_root = "data/processed/temp_structures"
+    # Batch partitioning
+    if args.total_batches > 1:
+        import math
+        chunk_size = math.ceil(len(all_zip_files) / args.total_batches)
+        start_idx = (args.batch_index - 1) * chunk_size
+        end_idx = min(start_idx + chunk_size, len(all_zip_files))
+        zip_files = all_zip_files[start_idx:end_idx]
+        output_file = os.path.join(os.path.dirname(args.output), f"gnina_chunk_{args.batch_index:03d}.csv")
+    else:
+        zip_files = all_zip_files
+        output_file = args.output
+        
+    temp_root = f"data/processed/temp_structures_b{args.batch_index}"
     os.makedirs(temp_root, exist_ok=True)
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
+    os.makedirs(os.path.dirname(output_file), exist_ok=True)
     
     scores = []
+    print(f"Batch {args.batch_index}/{args.total_batches}: Rescoring {len(zip_files)} prediction pairs...")
     for z_path in zip_files:
         print(f"Rescoring: {os.path.basename(z_path)}...")
         res = rescore_pair(z_path, temp_root, mode, autobox_add)
         if res:
             scores.append(res)
             
-    # Write output CSV
-    with open(args.output, 'w', encoding='utf-8') as out_f:
+    # Write chunk or main output CSV
+    with open(output_file, 'w', encoding='utf-8') as out_f:
         out_f.write("TF_Ligand,CNNscore,CNNaffinity,Gnina_Mode\n")
         for sc in scores:
             out_f.write(f"{sc['TF_Ligand']},{sc['CNNscore']},{sc['CNNaffinity']},{sc['Gnina_Mode']}\n")
             
-    print(f"Finished rescoring. Written scores to '{args.output}'.")
+    print(f"Finished batch {args.batch_index}. Written {len(scores)} scores to '{output_file}'.")
     
     # Clean up temp root
-    if os.path.exists(temp_root) and not os.listdir(temp_root):
-        os.rmdir(temp_root)
+    if os.path.exists(temp_root):
+        shutil.rmtree(temp_root, ignore_errors=True)
 
 if __name__ == '__main__':
     main()

@@ -88,7 +88,8 @@ def main():
     with open(report_csv, mode='r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for r in reader:
-            r['is_tp'] = 1 if r['TF_Ligand'] in true_positive_pairs else 0
+            is_tp = r.get('Is_True_Positive', '').strip().lower() in ['true', '1', 'yes', 't', 'positive']
+            r['is_tp'] = 1 if is_tp else 0
             r['AF3_Score'] = float(r['AF3_Score'])
             r['AF3_ipTM'] = float(r['AF3_ipTM'])
             r['Gnina_CNNscore'] = float(r['Gnina_CNNscore'])
@@ -100,7 +101,7 @@ def main():
     y_true = [r['is_tp'] for r in rows]
     n_pos = sum(y_true)
     n_neg = len(y_true) - n_pos
-    print(f"Dataset summary: {n_pos} Positive Pairs, {n_neg} Negative Pairs (Total {len(y_true)} pairs)")
+    print(f"Dataset summary: {n_pos} Positive Control Pairs, {n_neg} Decoy/False Control Pairs (Total {len(y_true)} pairs)")
     
     scores = {
         "AF3 Alone (AF3_Score)": [r['AF3_Score'] for r in rows],
