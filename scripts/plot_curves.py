@@ -148,7 +148,7 @@ def generate_plots(y_true, metrics_data, svg_path='results/roc_pr_curves.svg', p
     ax_pr.set_xlabel("Recall (Sensitivity)", fontsize=12, fontweight='bold')
     ax_pr.set_ylabel("Precision (Positive Predictive Value)", fontsize=12, fontweight='bold')
     ax_pr.set_title("Precision-Recall (PR) Curve", fontsize=14, fontweight='bold', pad=12)
-    ax_pr.legend(loc="lower left", frameon=True, facecolor='white', framealpha=0.9, fontsize=9.5)
+    ax_pr.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.9, fontsize=9.5)
     ax_pr.grid(True, linestyle=':', alpha=0.6)
 
     plt.suptitle("Virtual Screening Evaluation: TF-Small Molecule Specificity (262 Screening Pairs)", fontsize=15, fontweight='bold', y=0.98)
