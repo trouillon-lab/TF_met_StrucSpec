@@ -5,6 +5,9 @@ alphafold3:
     --data_dir=./alphafold3_msas
   predictions:
     slurm_extra: '--gpus=1'
+    high_vram_slurm_extra: '--gpus=rtx_3090:1'
+    token_threshold: 500
+    retries: 2
     mem_mb: 16384
     singularity_args: '--env XLA_FLAGS="--xla_disable_hlo_passes=custom-kernel-fusion-rewriter"'
     run_alphafold_args: >-
