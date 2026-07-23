@@ -2,7 +2,8 @@
 """
 Score-2 Consensus Dataset Processor & AF3 Input JSON Generator
 Parses consensus_rank_interval.csv, extracts score=2 positive pairs, generates an equal amount of
-strictly non-existing decoy negative pairs, maps gene names to UniProt sequences and BiGG IDs to SMILES,
+strictly non-existing decoy negative pairs, dynamically resolves gene names to UniProt sequences
+and BiGG IDs to SMILES via UniProt/BiGG/PubChem REST APIs, caches resolved entities in JSON,
 and outputs AF3 input JSON files for cluster execution.
 """
 
@@ -18,86 +19,7 @@ import urllib.parse
 import argparse
 import pandas as pd
 
-# Standard UniProt ID & Sequence mapping dictionary for score=2 TFs
-TF_UNIPROT_MAP = {
-    'AraC': ('P0A9E0', 'MAEAQNDPLLPGYSFNAHLVAGLTPIEANGYLDFFIDRPLGMKGYILNLTIRGQGVVKNQGREFVCRPGDILLFPPGEIHHYGRHPEAREWYHQWVYFRPRAYWHEWLNWPSIFANTGFFRPDEAHQPHFSDLFGQIINAGQGEGRYSELLAINLLEQLLLRRMEAINESLHPPMDNRVREACQYISDHLADSNFDIASVAQHVCLSPSRLSHLFRQQLGISVLSWREDQRISQAKLLLSTTRMPIATVGRNVGFDDQLYFSRVFKKCTGASPSEFRAGCEEKVNDVAVKLS'),
-    'ArcA': ('P0A9Q1', 'MSKILVVDDDMRLRALLERYLTEQGFQVRSVANAEQMDRLLTRESFHLMVLDLMLPGEDGLSICRRLRSQSNPMPIIMVTAKGEEVDRIVGLEIGADDYIPKPFNPRELLARIRAVLRRQANELPGAPSQEEAVIAFGKFKLNLGTREMFREDEPMPLTSGEFAVLKALVCHPREPLSRDKLMNLARGREYSAMERSIDVQISRLRRMVEEDPAHPRYIQTVWGLGYVFVPDGSKA'),
-    'BirA': ('P06709', 'MKDNTVPLKLIALLANGEFHSGEQLGETLGMSRAAINKHIQTLRDWGVDVFTVPGKGYSLPEPIQLLNAKQILGQLDGGSVAVLPVIDSTNQYLLDRIGELKSGDACIAEYQQAGRGRRGRKWFSPFGANLYLSMFWRLEQGPAAAIGLSLVIGIVMAEVLRKLGADKVRVKWPNDLYLQDRKLAGILVELTGKTGDAAQIVIGAGINMAMRRVEESVVNQGWITLQEAGINLDRNTLAAMLIRELRAALELFEQEGLAPYLSRWEKLDNFINRPVKLIIGDKEIFGISRGIDKQGALLLEQDGIIKPWMGGEISLRSAEK'),
-    'CRP': ('P0ACJ8', 'MVLGKPQTDPTLEWFLSHCHIHKYPSKSTLIHQGEKAETLYYIVKGSVAVLIKDEEGKEMILSYLNQGDFIGELGLFEEGQERSAWVRAKTACEVAEISYKKFRQLIQVNPDILMRLSAQMARRLQVTSEKVGNLAFLDVTGRIAQTLLNLAKQPDAMTHPDGMQIKITRQEIGQIVGCSRETVGRILKMLEDQNLISAHGKTIVVYGTR'),
-    'CaiF': ('P0AE58', 'MCEGYVEKPLYLLIAEWMMAENRWVIAREISIHFDIEHSKAVNTLTYILSEVTEISCEVKMIPNKLEGRGCQCQRLVKVVDIDEQIYARLRNNSREKLVGVRKTPRIPAVPLTELNREQKWQMMLSKSMRR'),
-    'Cra': ('P0ACP1', 'MKLDEIARLAGVSRTTASYVINGKAKQYRVSDKTVEKVMAVVREHNYHPNAVAAGLRAGRTRSIGLVIPDLENTSYTRIANYLERQARQRGYQLLIACSEDQPDNEMRCIEHLLQRQVDAIIVSTSLPPEHPFYQRWANDPFPIVALDRALDREHFTSVVGADQDDAEMLAEELRKFPAETVLYLGALPELSVSFLREQGFRTAWKDDPREVHFLYANSYEREAAAQLFEKWLETHPMPQALFTTSFALLQGVMDVTLRRDGKLPSDLAIATFGDNELLDFLQCPVLAVAQRHRDVAERVLEIVLASLDEPRKPKPGLTRIKRNLYRRGVLSRS'),
-    'CytR': ('P0ACN7', 'MKAKKQETAATMKDVALKAKVSTATVSRALMNPDKVSQATRNRVEKAAREVGYLPQPMGRNVKRNESRTILVIVPDICDPFFSEIIRGIEVTAANHGYLVLIGDCAHQNQQEKTFIDLIITKQIDGMLLLGSRLPFDASIEEQRNLPPMVMANEFAPELELPTVHIDNLTAAFDAVNYLYEQGHKRIGCIAGPEEMPLCHYRLQGYVQALRRCGIMVDPQYIARGDFTFEAGSKAMQQLLDLPQPPTAVFCHSDVMALGALSQAKRQGLKVPEDLSIIGFDNIDLTQFCDPPLTTIAQPRYEIGREAMLLLLDQMQGQHVGSGSRLMDCELIIRGSTRALP'),
-    'DcuR': ('P0AD01', 'MKLILADDHDLVKTGVRFLLSRGYEVVGTAENGERAWQLAEEHQPDLIVTDIRMPVMDGISATRRISQQKDIPIIAMTAHGEVPLKAVEMAQAGAIDYIPKPFSLEEICNTIKAILRRSVEESAGEDQGSRLDKATAKLQYNFNTEEEFFTDLEPMPLTAGEFAVLKSLVSHPREPLSRDKLLSLAKGREYTAMERSIEVQISRLRKMVEDDPAHPRYIHTVWGLGYKLLPEGHNSK'),
-    'DeoR': ('P0ACK5', 'METRREERIGQLLQELKRSDKLHLKDAAALLGVSEMTIRRDLNNHSAPVVLLGGYIVLEPRSASHYLLSDQKSRLVEEKRRAAKLAATLVEPDQTLFFDCGTTTPWIIEAIDNEIPFTAVCYSLNTFLALKEKPHCRAFLCGGEFHASNAIFKPIDFQQTLNNFCPDIAFYSAAGVHVSKGATCFNLEELPVKHWAMSMAQKHVLVVDHSKFGKVRPARMGDLKRFDIVVSDCCPEDEYVKYAQTQRIKLMY'),
-    'ExuR': ('P0ACL2', 'MEITEPRRLYQQLAADLKERIEQGVYLVGDKLPAERFIADEKNVSRTVVREAIIMLEVEGYVEVRKGSGIHVVSNQPRHQQAADNNMEFANYGPFELLQARQLIESNIAEFAATQVTKQDIMKLMAIQEQARGEQCFRDSEWDLQFHIQVALATQNSALAAIVEKMWTQRSHNPYWKKLHEHIDSRTVDNWCDDHDQILKALIRKDPHAAKLAMWQHLENTKIMLFNETSDDFEFNADRYLFAENPVVHLDTATSGSK'),
-    'FNR': ('P0A9E5', 'MIPEKRIIRRIQSGGCAIHCQDCSISQLCIPFTLNEHELDQLDNIIERKKPIQKGQTLFKAGDELKSLYAIRSGTIKSYTITEQGDEQITGFHLAGDLVGFDAIGSGHHPSFAQALETSMVCEIPFETLDDLSGKMPNLRQQMMRLMSGEIKGDQDMILLLSKKNAEERLAAFIYNLSRRFAQRGFSPREFRLTMTRGDIGNYLGLTVETISRLLGRFQKSGMLAVKGKYITIENNDALAQLAGHTRNVA'),
-    'FabR': ('P0ACU5', 'MTVEHLLDLAQRAGVSRATISRVTNGNAVTSRERERFAVALAELDYRPNARAHVLAEQLAFTLGIVISDMSDAFFDALIKAVEQVALDTGNILLFGNTYHEQEKEHQALEQLIQDRCLALVVHAKVIPDAQVANLLKHIPGMVLINRVVPGFEHRCIGLDDLSGARLATRHLIENSHQRVGYLCSNHSIEEAEDRLAGYYNALTEAGIVPADRLISFGEPDESGGEQALMELLSRNLKLTAVFCFNDNMAAGAMSVLNDNGIEVPAEISLIGFDDVQVARFTEPKLTTVRYPIISMAKLATEIALEGAAGTVDPRADHCFMPTLVRRHSISTP'),
-    'FimZ': ('P0AEL8', 'MSDTEIIVFDDDRELAALLTFYLNNENIEVRGICNGLQALEEAGLRTLILDVMLPGEDGLSICRYLRSQSSPVPIIMLTAKGEEVDRIFGLELGADDYIVKPFSPREFIARVKAILRRNAVTIEPGETESFMLGDFVLELNTREMYREDEPIPLTSKEFAVLKLLVEHPREPLCRDKLMNLARGREYTAMERSIEVQICRLRRMIEEDPGHPRYIQTVWGLGYVFVADGSPA'),
-    'FrlR': ('P45544', 'MSATDRYSHQLLYATVRQRLLDDIAQGVYQAGQQIPTENELCTQYNVSRITIRKAISDLVADGVLIRWQGKGTFVQSQKVENALLTVSGFTDFGVSQGKATKEKVIEQERVSAAPFCEKLNIPGNSEVFHLCRVMYLDKEPLFIDSSWIPLSRYPDFDEIYVEGSSTYQLFQERFDTRVVSDKKTIDIFAATRPQAKWLKCELGEPLFRISKIAFDQNDKPVHVSELFCRANRITLTIDNKRH'),
-    'FucR': ('P0ACK8', 'MNTDTFMCSSDEKQTRSPLSLYSEYQRMEIEFRAPHIMPTSHWHGQVEVNVPFDGDVEYLINNEKVNINQGHITLFWACTPHQLTDTGTCQSMAIFNLPMHLFLSWPLDKDLINHVTHGMVIKSLATQQLSPFEVRRWQQELNSPNEQIRQLAIDEIGLMLKRFSLSGWEPILVNKTSRTHKNSVSRHAQFYVSQMLGFIAENYDQALTINDVAEHVKLNANYAMGIFQRVMQLTMKQYITAMRINHVRALLSDTDKSILDIALTAGFRSSSRFYSTFGKYVGMSPQQYRKLSQQRRQTFPG'),
-    'Fur': ('P0A9A9', 'MSDNSEDKILKTLKSLRQQGVSATTLGQIAKQAGVSRGAIYWHFKDKSDLFSEIWELSESNIGELELEYQAKFPGDPLSVLREILIHVLESTVTEERRRLLMEIIFHKCEFVGEMAVVQQAQRNLCLESYDRIEQTLKHCIEAKMLPADLMTRRAAIIMRGYISGLMENWLFAPQSFDLKKEARDYVAILLEMYLLCPTLRNPATNE'),
-    'H-NS': ('P0ACF8', 'MSEALKILNNIRTLRAQARECTLETLEEMLEKLEVVVNERREEESAAAAEVEERTRKLQQYREMLIADGIDPNELLNSLAAVKSGTKAKRAQRPAKYSYVDENGETKTWTGQGRTPAVIKKAMDEQGKSLDDFLIKQ'),
-    'IHF': ('P0A6X7', 'MATKSELIERLMSAMQEEYIMDKEALETVRAVLETFADFTSGFDAKLLENIARLGEISVEELLPGELKVPVEKAVITGTLTGEDVTLRFVGADGEKKIDVTID'),
-    'IclR': ('P16528', 'MVAPIPAKRGRKPAVATAPATGQVQSLTRGLKLLEWIAESNGSVALTELAQQAGLPNSTTHRLLTTMQQQGFVRQVGELGHWAIGAHAFMVGSSFLQSRNLLAIVHPILRNLMEESGETVNMAVLDQSDHEAIIIDQVQCTHLMRMSAPIGGKLPMHASGAGKAFLAQLSEEQVTKLLHRKGLHAYTHATLVSPVHLKEDLAQTRKRGYSFDDEEHALGLRCLAACIFDEHREPFAAISISGPISRITDDRVTEFGAMVIKAAKEVTLAYGGMR'),
-    'IscR': ('P0AGA2', 'MRLSYFLDQGLNRSSISQLTQSVESGMLSIEDAWRLAGVSRTTISRIINKKEDLLAEIFNQTEAINLEELEMEFEAKFPGEPLSVLREILIHVLENPVTERRRKLLMEIIFHKCEFVGEMAVVQQAQRNLCLESYDRIEQTLKHCIEAKMLPADLMTRRAAIIMRGYISGLMENWLFAPQSFDLKKEARDYVAILLEMYLLCPTLRNPATNE'),
-    'KdpE': ('P21866', 'MTSANIVVADDDAIRTVLNITLSEAGYTITGFSNGEEVLQIAEERPDLVILDIMLPGSDGLTMCLELRKTESPMPIVMVTAKGEEVDRIVGLELGADDYVTKPFSPRELIARVKALLRRQAEQLDGADLEENVIGKAYFKLDMGTRVMFREDEPMPLTAQEFAVLRLLVEHPRTPLSRDKLMNLARGREYSAMERSIDVQISRLRRMVEEDPGHPRYIQTVWGLGYVFVADGSPA'),
-    'ModE': ('P0A9G8', 'MQAEILLTLKLQQKLFADPRRISLLKHIALSGSISQGAKDAGISYKSAWDAINEMNQLSEHILVERATGGKGGGGAVLTRYGQRLIQLYDLLAQIQQKAFDVLSDDDALPLNSLLAAISRFSLQTSARNQWFGTITARDHDDVQQHVDVLLADGKTRLKVAITAQSGARLGLDEGKEVLILLKAPWVGITQDEAVAQNADNQLPGIISHIERGAEQCEVLMALPDGQTLCATVPVNEATSLQQGQNVTAYFNADSVIIATLC'),
-    'OxyR': ('P0ACQ4', 'MNSNLREIPQLVAFYRDHGLLSRITIAEQSQLAPASVTKITRQLIERGLIKEVDQQASTGGRRAISIVTETRNFHAIGVRLGRHDATITLFDLSSKVLAEEHYPLPERTQQTLEHALLNAIAQFIDSYQRKLRELIAISVILPGLVDPDSGKIHYMPHIQVENWGLVEALEERFKVTCFVGHDIRSLALAEHYFGASQDCEDSILVRVHRGTGAGIISNGRIFIGRNGNVGEIGHIQVEPLGERCHCGNFGCLETIAANAAIEQRVLNLLKQGYQSRVPLDDCTIKTICKAANKGDSLASEVIEYVGRHLGKTIAIAINLFNPQKIVIAGEITEADKVLLPAIESCINTQALKAFRTNLPVVRSELDHRSAIGAFALVKRAMLNGILLQHLLEN'),
-    'PaaX': ('P76086', 'MSKLDTFIQHAVNAVPVSGTSLISSLYGDSLSHRGGEIWLGSLAALLEGLGFGERFVRTALFRLNKEGWLDVSRIGRRSFYSLSDKGLRLTRRAESKIYRAEQPAWDGKWLLLLSEGLDKSTLADVKKQLIWQGFGALAPSLMASPSQKLADVQTLLHEAGVADNVICFEAQIPLALSRAALRARVEECWHLTEQNAMYETFIQSFRPLVPLLKEAADELTPERAFHIQLLLIHFYRRVVLKDPLLPEELLPAHWAGHTARQLCINIYQRVAPAALAFVSEKGETSVGELPAPGSLYFQRFGGLNIEQEALCQFIR'),
-    'PrpR': ('P77743', 'MAHPPRLNDDKPVIWTVSVTRLFELFRDISLEFDHLANITPIQLGFEKAVTYIRKKLANERCDAIIAAGSNGAYLKSRLSVPVILIKPSGYDVLQALAKAGKLTSSIGVVTYQETIPALVAFQKTFNLRLDQRSYITEEDARGQINELKANGTEAVVGAGLITDLAEEAGMTGIFIYSAATVRQAFSDALDMTRMSLRHNTHDATRNALRTRYVLGDMLGQSPQMEQVRQTILLYARSSAAVLIEGETGTGKELAAQAIHREYFARHDARQGKKSHPFVAVNCGAIAESLLEAELFGYEEGAFTGSRRGGRAGLFEIAHGGTLFLDEIGEMPLPLQTRLLRVLEEKEVTRVGGHQPVPVDVRVISATHCNLEEDMQQGRFRRDLFYRLSILRLQLPPLRERVADILPLAESFLKVSLAALSAPFSAALRQGLQASETVLLHYDWPGNIRELRNMMERLALFLSVEPTPDLTPQFMQLLLPELARESAKTPAPRLLTPQQALEKFNGDKTAAANYLGISRTTFWRRLKS'),
-    'RhaS': ('P09377', 'MTVLHSVDFFPSGNASVAIEPRLPQADFPEHHHDFHEIVIVEHGTGIHVFNGQPYTITGGTVCFVRDHDRHLYEHTDNLCLTNVLYRSPDRFQFLAGLNQLLPQELDGQYPSHWRVNHSVLQQVRQLVAQMEQQEGENDLPSTASREILFMQLLLLLRKSSLQENLENSASRLNLLLAWLEDHFADEVNWDAVADQFSLSLRTLHRQLKQQTGLTPQRYLNRLRLMKARHLLRHSEASVTDIAYRCGFSDSNHFSTLFRREFNWSPRDIRQGRDGFLQ'),
-    'SlyA': ('P0A8W2', 'MELPNIGGLAPYLHMKQEGMTENESRIVEWLLKPGNLSCAPAIKDVAEALAVSEAMIVKVSKLLGFSGFRNLRSALEDYFSQSEQVLPSELAFDEAPQDVVNKVFNITLRTIMEGQSIVNVDEIHRAARFFYQARQRDLYGAGGSNAICADVQHKFLRIGVRCQAYPDAHIMMMSASLLQEGDVVLVVTHSGRTSDVKAAVELAKKNGAKIICITHSYHSPIAKLADYIICSPAPETPLLGRNASARILQLTLLDAFFVSVAQLNIEQANINMQKTGAIVDFFSPGALK'),
-    'SrsR': ('P52044', 'MKKLTLEESVEAIKTLQAKGLIRSRFGYSSQIVSVFEYAFREARGFSHQIVLRGKKSETLWVNKRVVKSPEEVAEQFAAEAGSDVFLLKRICYVDAEAVSIEESWVPAHLIHDVDAIGISLYDYFRSQHIYPQRTRSRVSARMPDAEFQSHIQLDSKIPVLVIKQVALDQQQRPIEYSISHCRSDLYVFVCEE'),
-    'TorR': ('P38684', 'MQTHIIVADDDAIRTVLNIRLSEAGYTITGFSNGEEVLQIAEERPDLVILDIMLPGSDGLTMCLELRKTESPMPIVMVTAKGEEVDRIVGLELGADDYVTKPFSPRELIARVKALLRRQAEQLDGADLEENVIGKAYFKLDMGTRVMFREDEPMPLTAQEFAVLRLLVEHPRTPLSRDKLMNLARGREYSAMERSIDVQISRLRRMVEEDPGHPRYIQTVWGLGYVFVADGSPA'),
-    'UxuR': ('P39161', 'MKSATSAQRPYQEVGAMIRDLIIKTPYNPGERLPPEREIAEMLDVTRTVVREALIMLEIKGLVEVRRGAGIYVLDNSGSQNTDSPDANVCNDAGPFELLQARQLIESNIAEFAALQATREDIVKMRQALQLEERELASSAPGSSESGDMQFHLAIAEATHNSMLVELFRQSWQWRENNPMWIQLHSHLDDSLYRKEWLGDHKQILAALIKKDARAAKLAMWQHLENVKQRLLEFSNVDDIYFDGYLFDSWPLDKVDA'),
-    'XylR': ('P0ACI3', 'MFTKRHRITLLFNANKAYDRQVVEGVGEYLQASQSEWDIFIEEDFRARIDKIKDWLGDGVIADFDDKQIEQALADVDVPIVGVGGSYHLAESYPPVHYIATDNYALVESAFLHLKEKGVNRFAFYGLPESSGKRWATEREYAFRQLVAEEKYRGVVYQGLETAPENWQHAQNRLADWLQTLPPQTGIIAVTDARARHILQVCEHLHIPVPEKLCVIGIDNEELTRYLSRVALSSVAQGARQMGYQAAKLLHRLLDKEEMPLQRILVPPVRVIERRSTDYRSLTDPAVIQAMHYIRNHACKGIKVDQVLDAVGISRSNLEKRFKEEVGETIHAMIHAEKLEKARSLLISTTLSINEISQMCGYPSLQYFYSVFKKAYDTTPKEYRDVNSEVML'),
-    'YdeO': ('P76135', 'MSLLPIQLFKILADETRLGIVLLLSELGELCVCDLCTALDQSQPKISRHLALLRESGLLLDRKQGKWVHYRLSPHIPAWAAKIIDEAWRCEQEKVQAIVRNLARQNCSGDSKNICS'),
-    'YgaV': ('P77295', 'MRIKIDADDDYVRAALLARLTEHGYLIRSIANGEQAYELARERPDLVILDVMLPRMDGISISRELRKSDSPMPIVMLTAKGEEVDRIVGLELGADDYVTKPFSPRELIARVKALLRRQAEQLDGADLEENVIGKAYFKLDMGTRVMFREDEPMPLTAQEFAVLRLLVEHPRTPLSRDKLMNLARGREYSAMERSIDVQISRLRRMVEEDPGHPRYIQTVWGLGYVFVADGSPA')
-}
-
-BIGG_SMILES_MAP = {
-    '2dmmq8_c': ('2-Demethylmenaquinone 8', 'CC(=CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)C)C1=CC(=O)C2=CC=CC=C2C1=O'),
-    '2dmmql8_c': ('2-Demethylmenaquinol 8', 'CC(=CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)CCC=C(C)C)C1=CC(O)=C2C=CC=CC2=C1O'),
-    '2dr1p_c': ('2-Deoxy-D-ribose 1-phosphate', 'C1C(C(OC1O)COP(=O)(O)O)O'),
-    '2dr5p_c': ('2-Deoxy-D-ribose 5-phosphate', 'C1C(C(OC1O)COP(=O)(O)O)O'),
-    'altrn_c': ('D-Altronate', 'C(C(C(C(C(=O)O)O)O)O)O'),
-    'arab__L_c': ('L-Arabinose', 'C1C(C(C(C(O1)O)O)O)O'),
-    'cdec3eACP_c': ('Cis-dec-3-enoyl-[ACP]', r'CCCC/C=C\CC(=O)SCCNC(=O)CCNC(=O)[C@H](O)C(C)(C)COP(=O)(O)O'),
-    'crnDcoa_c': ('D-carnitinyl-CoA', 'C[N+](C)(C)CC(CC(=O)SCCNC(=O)CCNC(=O)[C@H](O)C(C)(C)COP(=O)(O)OP(=O)(O)OC[C@H]1O[C@H](n2cnc3c(N)ncnc32)[C@H](O)[C@@H]1OP(=O)(O)O)O'),
-    'dad_2_c': ('Deoxyadenosine', 'C1C(C(OC1n2cnc3c2ncnc3N)CO)O'),
-    'dann_c': ('7,8-Diaminononanoate', 'CC(C(CCCC(=O)O)N)N'),
-    'dgsn_c': ('Deoxyguanosine', 'C1C(C(OC1n2cnc3c2nc(nc3=O)N)CO)O'),
-    'din_c': ('Deoxyinosine', 'C1C(C(OC1n2cnc3c2nc[nH]c3=O)CO)O'),
-    'duri_c': ('Deoxyuridine', 'C1C(C(OC1n2ccc(=O)[nH]c2=O)CO)O'),
-    'fcl__L_c': ('L-Fuculose', 'CC1C(C(C(C(=O)O1)O)O)O'),
-    'fmn_c': ('FMN', 'Cc1cc2c(cc1C)N(C[C@H](O)[C@H](O)[C@H](O)COP(=O)(O)O)c1nc(=O)[nH]c(=O)c1N2'),
-    'frulys_c': ('Fructoselysine', 'C(CCN)CC(C(=O)O)NCC(=O)C(C(CO)O)O'),
-    'fruur_c': ('D-Fructuronate', 'C(C(C(C(=O)C(=O)O)O)O)O'),
-    'fuc__L_c': ('L-Fucose', 'CC1C(C(C(C(O1)O)O)O)O'),
-    'galur_c': ('D-Galacturonate', 'C1C(C(C(C(O1)O)O)O)C(=O)O'),
-    'gg4abut_c': ('Gamma-glutamyl-gamma-aminobutyrate', 'C(CC(=O)O)CNC(=O)CCC(C(=O)O)N'),
-    'ggbutal_c': ('Gamma-glutamyl-gamma-butyraldehyde', 'C(CC=O)CNC(=O)CCC(C(=O)O)N'),
-    'glcur_c': ('D-Glucuronate', 'C1C(C(C(C(O1)O)O)O)C(=O)O'),
-    'gsn_c': ('Guanosine', 'C1C(C(C(O1)n2cnc3c2nc(nc3=O)N)CO)O'),
-    'icit_c': ('Isocitrate', 'C(C(C(=O)O)C(=O)O)C(C(=O)O)O'),
-    'mana_c': ('D-Mannonate', 'C(C(C(C(C(=O)O)O)O)O)O'),
-    'pac_c': ('Phenylacetate', 'CC1=CC=CC=C1C(=O)O'),
-    'pacald_c': ('Phenylacetaldehyde', 'CC1=CC=CC=C1C=O'),
-    'phaccoa_c': ('Phenylacetyl-CoA', 'CC1=CC=CC=C1C(=O)SCCNC(=O)CCNC(=O)[C@H](O)C(C)(C)COP(=O)(O)OP(=O)(O)OC[C@H]2O[C@H](n3cnc4c(N)ncnc43)[C@H](O)[C@@H]2OP(=O)(O)O'),
-    'ppa_c': ('Propionate', 'CCC(=O)O'),
-    'ppcoa_c': ('Propanoyl-CoA', 'CCC(=O)SCCNC(=O)CCNC(=O)[C@H](O)C(C)(C)COP(=O)(O)OP(=O)(O)OC[C@H]1O[C@H](n2cnc3c(N)ncnc32)[C@H](O)[C@@H]1OP(=O)(O)O'),
-    'psclys_c': ('Psicoselysine', 'C(CCN)CC(C(=O)O)NCC(=O)C(C(CO)O)O'),
-    'rbl__L_c': ('L-Ribulose', 'OCC(=O)[C@H](O)[C@H](O)CO'),
-    'ribflv_c': ('Riboflavin', 'Cc1cc2c(cc1C)N(C[C@H](O)[C@H](O)[C@H](O)CO)c1nc(=O)[nH]c(=O)c1N2'),
-    'rml_c': ('L-Rhamnulose', 'C[C@H](O)[C@@H](O)C(=O)CO'),
-    'rmn_c': ('L-Rhamnose', 'C[C@H]1O[C@@H](O)[C@H](O)[C@@H](O)[C@@H]1O'),
-    'sufsesh_c': ('SufSE-bound sulfur', 'C(CS)C(C(=O)O)N'),
-    'tagur_c': ('D-Tagaturonate', 'O=C(O)C(=O)[C@@H](O)[C@H](O)[C@@H](O)CO'),
-    'thym_c': ('Thymine', 'Cc1cn[nH]c(=O)c1=O'),
-    'thymd_c': ('Thymidine', 'Cc1cn([C@H]2CC(O)[C@@H](CO)O2)c(=O)[nH]c1=O'),
-    'xyl__D_c': ('D-Xylose', 'OC1COC(O)C(O)C1O'),
-    'xylu__D_c': ('D-Xylulose', 'OCC(=O)[C@@H](O)[C@H](O)CO')
-}
+CACHE_FILE = 'data/processed/cache_sequences_smiles.json'
 
 def clean_filename(name):
     """Sanitize strings for safe filesystem names."""
@@ -111,10 +33,36 @@ def parse_pair(s):
     except Exception:
         return None, None
 
-def fetch_uniprot_fallback(gene_name):
-    """Fetches UniProt sequence via REST API if not in static dict."""
+def load_cache():
+    """Loads local JSON cache file."""
+    if os.path.exists(CACHE_FILE):
+        try:
+            with open(CACHE_FILE, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {'uniprot': {}, 'kegg_smiles': {}, 'gene_uniprot': {}, 'bigg_smiles': {}}
+
+def save_cache(cache):
+    """Saves updated cache to local JSON file."""
+    os.makedirs(os.path.dirname(os.path.abspath(CACHE_FILE)), exist_ok=True)
+    with open(CACHE_FILE, 'w', encoding='utf-8') as f:
+        json.dump(cache, f, indent=2)
+
+def resolve_uniprot_by_gene(gene_name, cache):
+    """
+    Dynamically queries UniProt REST API for a gene name in E. coli MG1655 (organism 83333).
+    Caches result to prevent redundant API calls.
+    """
+    gene_uniprot_cache = cache.setdefault('gene_uniprot', {})
+    if gene_name in gene_uniprot_cache:
+        acc, seq = gene_uniprot_cache[gene_name]
+        return acc, seq
+
+    # Known gene alias mappings for E. coli MG1655
     gene_query = 'ihfA' if gene_name == 'IHF' else ('ygfI' if gene_name == 'SrsR' else gene_name)
-    url = f'https://rest.uniprot.org/uniprotkb/search?query=gene_exact:{gene_query}+AND+organism_id:83333+AND+reviewed:true&format=json'
+    url = f"https://rest.uniprot.org/uniprotkb/search?query=gene_exact:{gene_query}+AND+organism_id:83333+AND+reviewed:true&format=json"
+    
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as resp:
@@ -123,15 +71,28 @@ def fetch_uniprot_fallback(gene_name):
                 res = data['results'][0]
                 acc = res['primaryAccession']
                 seq = res['sequence']['value']
+                gene_uniprot_cache[gene_name] = [acc, seq]
+                save_cache(cache)
                 return acc, seq
     except Exception as e:
-        print(f"Warning: Failed to fetch UniProt for '{gene_name}': {e}", file=sys.stderr)
+        print(f"Warning: UniProt REST API lookup failed for gene '{gene_name}': {e}", file=sys.stderr)
+        
     return "UNKNOWN_ACC", "M"
 
-def fetch_bigg_smiles_fallback(bigg_raw):
-    """Fetches ligand name and SMILES string via BiGG/PubChem API fallback."""
-    clean_id = bigg_raw.rsplit('_', 1)[0] if bigg_raw.endswith(('_c', '_e', '_p')) else bigg_raw
-    url = f'http://bigg.ucsd.edu/api/v2/universal/metabolites/{clean_id}'
+def resolve_smiles_by_bigg(bigg_id, cache):
+    """
+    Dynamically queries BiGG API & PubChem PUG REST API for a BiGG metabolite ID.
+    Resolves name and canonical SMILES string, caching the result.
+    """
+    bigg_cache = cache.setdefault('bigg_smiles', {})
+    if bigg_id in bigg_cache:
+        name, smiles = bigg_cache[bigg_id]
+        return name, smiles
+
+    clean_id = bigg_id.rsplit('_', 1)[0] if bigg_id.endswith(('_c', '_e', '_p')) else bigg_id
+    url = f"http://bigg.ucsd.edu/api/v2/universal/metabolites/{clean_id}"
+    
+    name, smiles = clean_id, None
     try:
         req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
         with urllib.request.urlopen(req) as resp:
@@ -139,21 +100,49 @@ def fetch_bigg_smiles_fallback(bigg_raw):
             name = data.get('name', clean_id)
             links = data.get('database_links', {})
             
-            # PubChem CID lookup
+            # 1. PubChem CID lookup
             if 'PubChem Compound' in links:
                 cid = links['PubChem Compound'][0]['id']
-                pc_url = f'https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/CanonicalSMILES/JSON'
+                pc_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/CanonicalSMILES,SMILES/JSON"
                 try:
                     with urllib.request.urlopen(urllib.request.Request(pc_url, headers={'User-Agent': 'Mozilla/5.0'})) as pc_resp:
                         pc_data = json.loads(pc_resp.read().decode('utf-8'))
-                        smiles = pc_data['PropertyTable']['Properties'][0]['CanonicalSMILES']
-                        return name, smiles
+                        props = pc_data['PropertyTable']['Properties'][0]
+                        smiles = props.get('CanonicalSMILES') or props.get('SMILES')
                 except Exception:
                     pass
-            return name, "C"
+                    
+            # 2. InChI Key lookup
+            if not smiles and 'InChI Key' in links:
+                inchikey = links['InChI Key'][0]['id']
+                pc_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/inchikey/{inchikey}/property/CanonicalSMILES,SMILES/JSON"
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(pc_url, headers={'User-Agent': 'Mozilla/5.0'})) as pc_resp:
+                        pc_data = json.loads(pc_resp.read().decode('utf-8'))
+                        props = pc_data['PropertyTable']['Properties'][0]
+                        smiles = props.get('CanonicalSMILES') or props.get('SMILES')
+                except Exception:
+                    pass
+                    
+            # 3. Name lookup on PubChem
+            if not smiles and name:
+                pc_url = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/name/{urllib.parse.quote(name)}/property/CanonicalSMILES,SMILES/JSON"
+                try:
+                    with urllib.request.urlopen(urllib.request.Request(pc_url, headers={'User-Agent': 'Mozilla/5.0'})) as pc_resp:
+                        pc_data = json.loads(pc_resp.read().decode('utf-8'))
+                        props = pc_data['PropertyTable']['Properties'][0]
+                        smiles = props.get('CanonicalSMILES') or props.get('SMILES')
+                except Exception:
+                    pass
     except Exception as e:
-        print(f"Warning: Failed BiGG API lookup for '{bigg_raw}': {e}", file=sys.stderr)
-    return clean_id, "C"
+        print(f"Warning: BiGG API lookup failed for '{bigg_id}': {e}", file=sys.stderr)
+
+    if not smiles:
+        smiles = "C"  # Methane fallback if completely unresolvable via API
+        
+    bigg_cache[bigg_id] = [name, smiles]
+    save_cache(cache)
+    return name, smiles
 
 def process_consensus_dataset(
     raw_csv='data/raw/consensus_rank_interval.csv',
@@ -166,6 +155,7 @@ def process_consensus_dataset(
         raise FileNotFoundError(f"Input CSV file '{raw_csv}' not found.")
         
     random.seed(random_seed)
+    cache = load_cache()
     
     raw_df = pd.read_csv(raw_csv)
     raw_df['tf'], raw_df['bigg'] = zip(*raw_df['tf_met_pair'].apply(parse_pair))
@@ -211,19 +201,14 @@ def process_consensus_dataset(
         
     print(f"Successfully sampled {len(neg_pairs)} decoy negative pairs (strictly non-existing in entire dataset).")
     
-    # 4. Build output dataset rows
+    # 4. Build output dataset rows dynamically via REST APIs
     output_rows = []
     
-    # Add positives
-    for tf_name, bigg_id in pos_pairs_set:
-        acc, seq = TF_UNIPROT_MAP.get(tf_name, (None, None))
-        if not seq:
-            acc, seq = fetch_uniprot_fallback(tf_name)
-            
-        ligand_name, smiles = BIGG_SMILES_MAP.get(bigg_id, (None, None))
-        if not smiles:
-            ligand_name, smiles = fetch_bigg_smiles_fallback(bigg_id)
-            
+    # Process Positives
+    for tf_name, bigg_id in sorted(pos_pairs_set):
+        acc, seq = resolve_uniprot_by_gene(tf_name, cache)
+        ligand_name, smiles = resolve_smiles_by_bigg(bigg_id, cache)
+        
         output_rows.append({
             'TF_Name': tf_name,
             'Uniprot_ID': acc,
@@ -234,16 +219,11 @@ def process_consensus_dataset(
             'Label': 'positive'
         })
         
-    # Add negatives
-    for tf_name, bigg_id in neg_pairs:
-        acc, seq = TF_UNIPROT_MAP.get(tf_name, (None, None))
-        if not seq:
-            acc, seq = fetch_uniprot_fallback(tf_name)
-            
-        ligand_name, smiles = BIGG_SMILES_MAP.get(bigg_id, (None, None))
-        if not smiles:
-            ligand_name, smiles = fetch_bigg_smiles_fallback(bigg_id)
-            
+    # Process Negatives
+    for tf_name, bigg_id in sorted(neg_pairs):
+        acc, seq = resolve_uniprot_by_gene(tf_name, cache)
+        ligand_name, smiles = resolve_smiles_by_bigg(bigg_id, cache)
+        
         output_rows.append({
             'TF_Name': tf_name,
             'Uniprot_ID': acc,
@@ -299,7 +279,7 @@ def process_consensus_dataset(
     return out_csv, len(pos_pairs_set), len(neg_pairs)
 
 def main():
-    parser = argparse.ArgumentParser(description="Process consensus rank interval dataset and generate AF3 JSONs.")
+    parser = argparse.ArgumentParser(description="Process consensus rank interval dataset and generate AF3 JSONs dynamically.")
     parser.add_argument('--raw-csv', default='data/raw/consensus_rank_interval.csv', help="Input consensus CSV")
     parser.add_argument('--out-csv', default='data/processed/pairings_score2_benchmark.csv', help="Output processed CSV")
     parser.add_argument('--out-json-dir', default='alphafold3_jsons_score2', help="Output AF3 JSON directory")
