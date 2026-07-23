@@ -250,13 +250,12 @@ def main():
         if not af3_metrics:
             continue
             
-        # Compute AF3 Score with dampening constant epsilon = 0.1 to eliminate PAE zero-division asymptotes
+        # Compute AF3 Score using Solution 2: denominator starts at 1.0 (iptm / (1.0 + pae))
         pae = af3_metrics['pae_min']
         iptm = af3_metrics['iptm']
         clash = af3_metrics['has_clash']
         
-        eps = 0.1
-        af3_score = iptm / (pae + eps)
+        af3_score = iptm / (1.0 + pae)
         if clash:
             af3_score = 0.0
             
