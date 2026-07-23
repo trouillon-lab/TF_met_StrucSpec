@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 Comprehensive Score Distribution & Correlation Diagnostic Plotter
-Plots KDE density histograms, boxplots, and Spearman correlation heatmaps across all 7 score metrics
-(ipTM, PAE_min, AF3 Score, CNNscore, CNNaffinity, GNINA VS, Consensus) to analyze mathematical scaling,
+Plots KDE density histograms and Spearman correlation heatmaps across all 7 score metrics
+(ipTM, Inv PAE_min, AF3 Score, CNNscore, CNNaffinity, GNINA VS, Consensus) to analyze mathematical scaling,
 skewness, and combination compatibility for virtual screening.
 """
 
@@ -21,12 +21,14 @@ def load_report_data(report_csv='results/ranked_pairings_report.csv'):
         
     raw_df = pd.read_csv(report_csv)
     
+    pae_raw = raw_df['AF3_PAE_min'].astype(float)
+    
     df = pd.DataFrame({
         'TF_Name': raw_df['TF_Name'].astype(str).str.strip(),
         'Ligand_Name': raw_df['Ligand_Name'].astype(str).str.strip(),
         'Is_Positive': raw_df['Is_True_Positive'].astype(str).str.lower().isin(['true', '1', 'yes', 't', 'positive']).astype(int),
         'AF3_ipTM': raw_df['AF3_ipTM'].astype(float),
-        'AF3_PAE_min': raw_df['AF3_PAE_min'].astype(float),
+        'AF3_Inv_PAE': 1.0 / np.maximum(pae_raw, 0.01),
         'AF3_Score': raw_df['AF3_Score'].astype(float),
         'Gnina_CNNscore': raw_df['Gnina_CNNscore'].astype(float),
         'Gnina_CNNaffinity': raw_df['Gnina_CNNaffinity'].astype(float),
@@ -43,19 +45,19 @@ def generate_distribution_diagnostics(
     out_corr_svg='results/score_correlation_matrix.svg',
     out_corr_png='results/score_correlation_matrix.png'
 ):
-    """Generates distribution KDE histograms and Spearman correlation heatmaps for all scores."""
+    """Generates distribution KDE histograms and direction-aligned Spearman correlation heatmaps."""
     df = load_report_data(report_csv)
     
     sns.set_theme(style="whitegrid")
     
     metrics_config = [
-        ("AF3 ipTM", "AF3_ipTM", "[0, 1] (Bounded)", "#7F7F7F"),
-        ("AF3 PAE_min", "AF3_PAE_min", "Å (Lower is better)", "#17BECF"),
-        ("AF3 Score (ipTM / PAE)", "AF3_Score", "Ratio (Unbounded)", "#1F77B4"),
-        ("GNINA CNNscore", "Gnina_CNNscore", "[0, 1] (Bounded)", "#FF7F0E"),
-        ("GNINA CNNaffinity", "Gnina_CNNaffinity", "pK_d (Unbounded)", "#E377C2"),
-        ("GNINA VS (CNNscore * pK_d)", "Gnina_CNN_VS", "Product", "#9467BD"),
-        ("Consensus (AF3 * GNINA_VS)", "Consensus_Score", "Composite Product", "#2CA02C")
+        ("AF3 ipTM", "AF3_ipTM", "[0, 1] Bounded", "#4C72B0"),
+        ("AF3 Inv PAE (1/PAE)", "AF3_Inv_PAE", "Inv Å (Higher is better)", "#55A868"),
+        ("AF3 Score (ipTM / (1+PAE))", "AF3_Score", "[0, 1] Bounded (Solution 2)", "#D55E00"),
+        ("GNINA CNNscore", "Gnina_CNNscore", "[0, 1] Bounded", "#8172B0"),
+        ("GNINA CNNaffinity", "Gnina_CNNaffinity", "pK_d (Higher is better)", "#CCB974"),
+        ("GNINA VS (CNNscore * pK_d)", "Gnina_CNN_VS", "Product Score", "#64B5CD"),
+        ("Consensus (AF3 * GNINA_VS)", "Consensus_Score", "[0, 3.4] Bounded Composite", "#009E73")
     ]
     
     # 1. Plot 7-Panel KDE & Histogram Grid
@@ -96,18 +98,19 @@ def generate_distribution_diagnostics(
     plt.close(fig)
     print(f"Exported score distribution histogram vector plot to '{out_hist_svg}'")
     
-    # 2. Plot Pairwise Spearman Correlation Heatmap
-    fig_corr, ax_corr = plt.subplots(figsize=(9, 7.5), dpi=300)
+    # 2. Plot Direction-Aligned Spearman Correlation Heatmap
+    fig_corr, ax_corr = plt.subplots(figsize=(9.5, 8.0), dpi=300)
     
-    corr_cols = ['Is_Positive', 'AF3_ipTM', 'AF3_PAE_min', 'AF3_Score', 'Gnina_CNNscore', 'Gnina_CNNaffinity', 'Gnina_CNN_VS', 'Consensus_Score']
-    labels_display = ['Ground Truth Label', 'AF3 ipTM', 'AF3 PAE_min', 'AF3 Score (ipTM/PAE)', 'GNINA CNNscore', 'GNINA CNNaffinity', 'GNINA VS Score', 'Consensus Score']
+    corr_cols = ['Is_Positive', 'AF3_ipTM', 'AF3_Inv_PAE', 'AF3_Score', 'Gnina_CNNscore', 'Gnina_CNNaffinity', 'Gnina_CNN_VS', 'Consensus_Score']
+    labels_display = ['Ground Truth Label', 'AF3 ipTM', 'AF3 Inv PAE (1/PAE)', 'AF3 Score (ipTM/(1+PAE))', 'GNINA CNNscore', 'GNINA CNNaffinity', 'GNINA VS Score', 'Consensus Score']
     
     corr_matrix = df[corr_cols].corr(method='spearman')
     corr_matrix.columns = labels_display
     corr_matrix.index = labels_display
     
-    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="vlag", vmin=-1.0, vmax=1.0, ax=ax_corr, cbar_kws={'label': 'Spearman Rank Correlation (ρ)'}, linewidths=0.5)
-    ax_corr.set_title("Pairwise Spearman Rank Correlation Matrix (All Scores & Label)", fontsize=13, fontweight='bold', pad=12)
+    # Use YlGnBu sequential colormap so strong positive correlations stand out clearly
+    sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="YlGnBu", vmin=0.0, vmax=1.0, ax=ax_corr, cbar_kws={'label': 'Spearman Rank Correlation (ρ)'}, linewidths=0.8, linecolor='white')
+    ax_corr.set_title("Direction-Aligned Spearman Rank Correlation Matrix (All Scores: Higher is Better)", fontsize=13, fontweight='bold', pad=12)
     plt.tight_layout()
     
     os.makedirs(os.path.dirname(os.path.abspath(out_corr_svg)), exist_ok=True)
@@ -120,7 +123,7 @@ def generate_distribution_diagnostics(
     print("\n" + "="*115)
     print("ALL SCORES STATISTICAL DISTRIBUTION SUMMARY TABLE (268 PAIRS)")
     print("="*115)
-    print(f"{'Score Metric':<32} | {'Scale Bounds':<20} | {'Mean ± SD':<18} | {'Median [IQR]':<18} | {'Skewness':<8}")
+    print(f"{'Score Metric':<32} | {'Scale Bounds':<28} | {'Mean ± SD':<18} | {'Median [IQR]':<18} | {'Skewness':<8}")
     print("-"*115)
     
     for title, col, scale_desc, _ in metrics_config:
@@ -131,7 +134,7 @@ def generate_distribution_diagnostics(
         
         sd_str = f"{sd_val:.2f}"
         iqr_str = f"{q50:.2f} [{q25:.2f}-{q75:.2f}]"
-        print(f"{title:<32} | {scale_desc:<20} | {mean_val:.2f} ± {sd_str:<9} | {iqr_str:<18} | {skew_val:+.2f}")
+        print(f"{title:<32} | {scale_desc:<28} | {mean_val:.2f} ± {sd_str:<9} | {iqr_str:<18} | {skew_val:+.2f}")
     print("="*115 + "\n")
 
 def main():

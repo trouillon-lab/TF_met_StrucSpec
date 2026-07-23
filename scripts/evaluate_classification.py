@@ -135,13 +135,13 @@ def plot_score_distributions(rows, out_svg='results/classification_score_distrib
             r['Gnina_CNNaffinity'] = 4.0
     
     metrics_to_plot = [
-        ("AF3 ipTM", "AF3_ipTM", "#7F7F7F"),
-        ("AF3 1/PAE_min", "Inv_PAE_min", "#17BECF"),
-        ("AF3 Alone (ipTM/PAE)", "AF3_Score", "#1F77B4"),
-        ("GNINA CNNscore", "Gnina_CNNscore", "#FF7F0E"),
-        ("GNINA CNNaffinity", "Gnina_CNNaffinity", "#E377C2"),
-        ("GNINA VS Score", "Gnina_CNN_VS", "#9467BD"),
-        ("Consensus (AF3+GNINA)", "Consensus_Score", "#2CA02C")
+        ("AF3 ipTM", "AF3_ipTM", "#4C72B0"),
+        ("AF3 Inv PAE (1/PAE)", "Inv_PAE_min", "#55A868"),
+        ("AF3 Alone (ipTM/(1+PAE))", "AF3_Score", "#D55E00"),
+        ("GNINA CNNscore", "Gnina_CNNscore", "#8172B0"),
+        ("GNINA CNNaffinity", "Gnina_CNNaffinity", "#CCB974"),
+        ("GNINA VS Score", "Gnina_CNN_VS", "#64B5CD"),
+        ("Consensus (AF3*GNINA_VS)", "Consensus_Score", "#009E73")
     ]
     
     for idx, (title, col, color) in enumerate(metrics_to_plot):

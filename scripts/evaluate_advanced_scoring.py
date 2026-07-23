@@ -91,13 +91,13 @@ def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval
     fig, (ax_roc, ax_pr) = plt.subplots(1, 2, figsize=(14, 6), dpi=300)
     
     colors = {
-        "AF3 ipTM": "#7F7F7F",                                 # Gray
-        "AF3 PAE_min (Inv: 1/PAE)": "#17BECF",                 # Cyan
-        "AF3 Alone (ipTM / PAE_min)": "#1F77B4",               # Blue
-        "GNINA CNNscore": "#FF7F0E",                           # Orange
-        "GNINA CNNaffinity (pK_d)": "#E377C2",                 # Pink
-        "GNINA VS Score (CNNscore * CNNaffinity)": "#9467BD",   # Purple
-        "Consensus Score (AF3 * GNINA_VS)": "#2CA02C"           # Emerald Green
+        "AF3 ipTM": "#4C72B0",
+        "AF3 PAE_min (Inv: 1/PAE)": "#55A868",
+        "AF3 Alone (ipTM / (1+PAE))": "#D55E00",
+        "GNINA CNNscore": "#8172B0",
+        "GNINA CNNaffinity (pK_d)": "#CCB974",
+        "GNINA VS Score (CNNscore * CNNaffinity)": "#64B5CD",
+        "Consensus Score (AF3 * GNINA_VS)": "#009E73"
     }
     
     linestyles = {
@@ -179,7 +179,7 @@ def main():
     all_scores_dict = {
         "AF3 ipTM": df['ipTM'].values,
         "AF3 PAE_min (Inv: 1/PAE)": 1.0 / np.maximum(df['PAE_min'].values, 0.01),
-        "AF3 Alone (ipTM / PAE_min)": df['AF3_Score'].values,
+        "AF3 Alone (ipTM / (1+PAE))": df['AF3_Score'].values,
         "GNINA CNNscore": df['CNNscore'].values,
         "GNINA CNNaffinity (pK_d)": df['CNNaffinity'].values,
         "GNINA VS Score (CNNscore * CNNaffinity)": df['Gnina_CNN_VS'].values,
