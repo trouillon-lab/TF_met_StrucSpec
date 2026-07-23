@@ -122,15 +122,26 @@ def evaluate_multibinder_ranking(rows, score_col='Consensus_Score'):
     return per_tf_results
 
 def plot_score_distributions(rows, out_svg='results/classification_score_distributions.svg', out_png='results/classification_score_distributions.png'):
-    """Generates dual violin/KDE score distribution plot comparing Positives vs Negatives."""
+    """Generates violin/strip score distribution plots for all 7 scoring metrics comparing Positives vs Negatives."""
     sns.set_theme(style="whitegrid")
     
-    fig, axes = plt.subplots(1, 3, figsize=(16, 5), dpi=300)
+    fig, axes = plt.subplots(1, 7, figsize=(28, 4.8), dpi=300)
+    
+    # Pre-calculate Inv PAE for each row
+    for r in rows:
+        pae = float(r.get('AF3_PAE_min', 2.0))
+        r['Inv_PAE_min'] = 1.0 / max(pae, 0.01)
+        if 'Gnina_CNNaffinity' not in r:
+            r['Gnina_CNNaffinity'] = 4.0
     
     metrics_to_plot = [
-        ("AF3 Alone", "AF3_Score", "#1F77B4"),
+        ("AF3 ipTM", "AF3_ipTM", "#7F7F7F"),
+        ("AF3 1/PAE_min", "Inv_PAE_min", "#17BECF"),
+        ("AF3 Alone (ipTM/PAE)", "AF3_Score", "#1F77B4"),
         ("GNINA CNNscore", "Gnina_CNNscore", "#FF7F0E"),
-        ("Consensus (AF3 + GNINA)", "Consensus_Score", "#2CA02C")
+        ("GNINA CNNaffinity", "Gnina_CNNaffinity", "#E377C2"),
+        ("GNINA VS Score", "Gnina_CNN_VS", "#9467BD"),
+        ("Consensus (AF3+GNINA)", "Consensus_Score", "#2CA02C")
     ]
     
     for idx, (title, col, color) in enumerate(metrics_to_plot):
@@ -149,12 +160,12 @@ def plot_score_distributions(rows, out_svg='results/classification_score_distrib
         
         sns.violinplot(
             data=df_data, x='Group', y='Score', hue='Group',
-            palette={'True Positive': color, 'True Negative': '#7F7F7F'},
+            palette={'True Positive': color, 'True Negative': '#444444'},
             inner='quartile', ax=ax, legend=False
         )
         sns.stripplot(
             data=df_data, x='Group', y='Score', color='black',
-            alpha=0.6, jitter=0.15, size=6, ax=ax
+            alpha=0.5, jitter=0.15, size=4.0, ax=ax
         )
         
         # Calculate optimal threshold
@@ -162,20 +173,20 @@ def plot_score_distributions(rows, out_svg='results/classification_score_distrib
         y_scores = np.array(pos_scores + neg_scores)
         opt_thresh, opt_m = compute_optimal_threshold(y_true, y_scores)
         
-        ax.axhline(opt_thresh, color='red', linestyle='--', linewidth=1.8, label=f"Opt Thresh = {opt_thresh:.3f}")
-        ax.set_title(f"{title}\n(Opt Thresh: {opt_thresh:.3f} | F1: {opt_m['f1']:.2f})", fontsize=12, fontweight='bold')
-        ax.set_xlabel("", fontsize=11)
-        ax.set_ylabel(title if idx == 0 else "", fontsize=11, fontweight='bold')
-        ax.legend(loc='upper right', frameon=True, fontsize=9.5)
+        ax.axhline(opt_thresh, color='red', linestyle='--', linewidth=1.8, label=f"Cutoff = {opt_thresh:.3f}")
+        ax.set_title(f"{title}\n(Cutoff: {opt_thresh:.3f} | F1: {opt_m['f1']:.2f})", fontsize=10.5, fontweight='bold')
+        ax.set_xlabel("", fontsize=10)
+        ax.set_ylabel(title if idx == 0 else "", fontsize=10.5, fontweight='bold')
+        ax.legend(loc='upper right', frameon=True, fontsize=8.0)
         
-    plt.suptitle("Score Distributions & Decision Thresholds: True Positives vs True Negatives", fontsize=14, fontweight='bold', y=1.02)
+    plt.suptitle("Score Distributions & Decision Thresholds across All 7 Metrics (268 Pairs)", fontsize=14, fontweight='bold', y=1.03)
     plt.tight_layout()
     
     os.makedirs(os.path.dirname(os.path.abspath(out_svg)), exist_ok=True)
     fig.savefig(out_svg, format='svg', bbox_inches='tight')
     fig.savefig(out_png, format='png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-    print(f"Exported score distribution vector plot to '{out_svg}'")
+    print(f"Exported score distribution vector plot for all 7 metrics to '{out_svg}'")
 
 def run_classification_analysis(
     report_csv='results/ranked_pairings_report.csv',
@@ -204,23 +215,32 @@ def run_classification_analysis(
     n_neg = int(len(y_true) - n_pos)
     print(f"Dataset Evaluation: {n_pos} True Positives, {n_neg} True Negatives (Total {len(y_true)} pairs)")
     
+    # Pre-calculate Inv PAE for each row
+    for r in rows:
+        pae = float(r.get('AF3_PAE_min', 2.0))
+        r['Inv_PAE_min'] = 1.0 / max(pae, 0.01)
+        if 'Gnina_CNNaffinity' not in r:
+            r['Gnina_CNNaffinity'] = 4.0
+            
     metrics_data = {
         "AF3 ipTM": np.array([float(r['AF3_ipTM']) for r in rows]),
+        "AF3 PAE_min (Inv: 1/PAE)": np.array([float(r['Inv_PAE_min']) for r in rows]),
         "AF3 Alone (ipTM / PAE_min)": np.array([float(r['AF3_Score']) for r in rows]),
         "GNINA CNNscore": np.array([float(r['Gnina_CNNscore']) for r in rows]),
+        "GNINA CNNaffinity": np.array([float(r['Gnina_CNNaffinity']) for r in rows]),
         "GNINA VS Score": np.array([float(r['Gnina_CNN_VS']) for r in rows]),
         "Consensus (AF3 + GNINA)": np.array([float(r['Consensus_Score']) for r in rows])
     }
     
     eval_results = evaluate_classification_metrics(y_true, metrics_data)
     
-    print("\n" + "="*110)
-    print(f"{'Method / Scoring Metric':<30} | {'ROC AUC':<8} | {'PR AUC':<8} | {'Opt Thresh':<10} | {'Sens':<7} | {'Spec':<7} | {'F1':<7} | {'Bal Acc':<7}")
-    print("-"*110)
+    print("\n" + "="*115)
+    print(f"{'Method / Scoring Metric':<32} | {'ROC AUC':<8} | {'PR AUC':<8} | {'Opt Thresh':<10} | {'Sens':<7} | {'Spec':<7} | {'F1':<7} | {'Bal Acc':<7}")
+    print("-"*115)
     for name, res in eval_results.items():
         m = res['optimal_metrics']
-        print(f"{name:<30} | {res['roc_auc']:<8.4f} | {res['pr_auc']:<8.4f} | {m['threshold']:<10.4f} | {m['sensitivity']:<7.2f} | {m['specificity']:<7.2f} | {m['f1']:<7.2f} | {m['balanced_accuracy']:<7.2f}")
-    print("="*110 + "\n")
+        print(f"{name:<32} | {res['roc_auc']:<8.4f} | {res['pr_auc']:<8.4f} | {m['threshold']:<10.4f} | {m['sensitivity']:<7.2f} | {m['specificity']:<7.2f} | {m['f1']:<7.2f} | {m['balanced_accuracy']:<7.2f}")
+    print("="*115 + "\n")
     
     # Evaluate Multi-Binder Ranking
     print("="*80)

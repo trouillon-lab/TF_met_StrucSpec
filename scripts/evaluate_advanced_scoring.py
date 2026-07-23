@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Shifted Inverse Consensus Scoring & Refinement Evaluator
-Evaluates AF3 ipTM, AF3 Alone, GNINA VS, Current Consensus, and Shifted Inverse Consensus
-formulations with dampening constant epsilon in [0.1, 0.2, 0.3, 0.5] to eliminate PAE_min asymptotes.
+Virtual Screening Classification & Scoring Evaluator
+Evaluates ROC curves, Precision-Recall (PR) curves, optimal decision thresholds,
+and summary classification metrics across all 5 core scoring metrics:
+1. AF3 ipTM
+2. AF3 Alone (ipTM / PAE_min)
+3. GNINA CNNscore
+4. GNINA VS Score (CNNscore * CNNaffinity)
+5. Consensus Score (AF3 * GNINA_VS)
 """
 
 import os
@@ -40,23 +45,8 @@ def load_and_preprocess_report(report_csv='results/ranked_pairings_report.csv'):
     
     return df
 
-def engineer_shifted_features(df, eps_values=[0.1, 0.2, 0.3, 0.5]):
-    """Engineers Shifted Inverse Consensus scores across a range of dampening constants (epsilon)."""
-    df = df.copy()
-    
-    # GNINA VS product
-    gnina_vs = df['CNNscore'] * df['CNNaffinity']
-    
-    for eps in eps_values:
-        col_name = f'S_Shifted_eps_{eps}'
-        shifted_af3 = df['ipTM'] / (df['PAE_min'] + eps)
-        df[col_name] = shifted_af3 * gnina_vs
-        df[col_name] = np.nan_to_num(df[col_name].values, nan=0.0, posinf=0.0, neginf=0.0)
-        
-    return df
-
 def compute_metrics_table(y_true, scores_dict):
-    """Calculates summary metrics table across all evaluated scoring methods."""
+    """Calculates summary metrics table across all 5 evaluated scoring methods."""
     metrics_list = []
     
     for name, y_scores in scores_dict.items():
@@ -95,46 +85,39 @@ def compute_metrics_table(y_true, scores_dict):
         
     return pd.DataFrame(metrics_list)
 
-def select_best_epsilon(y_true, df, eps_values=[0.1, 0.2, 0.3, 0.5]):
-    """Selects the best performing epsilon based on combined ROC AUC and PR AUC performance."""
-    best_eps = eps_values[0]
-    best_score = -1.0
-    eps_metrics = {}
-    
-    for eps in eps_values:
-        col_name = f'S_Shifted_eps_{eps}'
-        y_scores = df[col_name].values
-        
-        fpr, tpr, _ = roc_curve(y_true, y_scores)
-        roc_auc_val = auc(fpr, tpr)
-        pr_auc_val = average_precision_score(y_true, y_scores)
-        
-        score = roc_auc_val + pr_auc_val
-        eps_metrics[eps] = (roc_auc_val, pr_auc_val)
-        
-        if score > best_score:
-            best_score = score
-            best_eps = eps
-            
-    return best_eps, eps_metrics
-
 def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval.svg', out_png='results/advanced_scoring_eval.png'):
-    """Generates 1x2 publication-grade ROC & PR grid plot comparing top scoring methods."""
+    """Generates 1x2 publication-grade ROC & PR grid plot comparing all 7 scoring methods."""
     sns.set_theme(style="whitegrid")
     fig, (ax_roc, ax_pr) = plt.subplots(1, 2, figsize=(14, 6), dpi=300)
     
     colors = {
-        "AF3 ipTM": "#7F7F7F",                               # Gray
-        "AF3 Alone (ipTM / PAE_min)": "#FF7F0E",             # Orange
-        "GNINA VS (CNNscore * CNNaffinity)": "#9467BD",       # Purple
-        "Current Consensus": "#17BECF",                     # Cyan
+        "AF3 ipTM": "#7F7F7F",                                 # Gray
+        "AF3 PAE_min (Inv: 1/PAE)": "#17BECF",                 # Cyan
+        "AF3 Alone (ipTM / PAE_min)": "#1F77B4",               # Blue
+        "GNINA CNNscore": "#FF7F0E",                           # Orange
+        "GNINA CNNaffinity (pK_d)": "#E377C2",                 # Pink
+        "GNINA VS Score (CNNscore * CNNaffinity)": "#9467BD",   # Purple
+        "Consensus Score (AF3 * GNINA_VS)": "#2CA02C"           # Emerald Green
     }
     
     linestyles = {
         "AF3 ipTM": ":",
+        "AF3 PAE_min (Inv: 1/PAE)": "--",
         "AF3 Alone (ipTM / PAE_min)": "--",
-        "GNINA VS (CNNscore * CNNaffinity)": "-.",
-        "Current Consensus": "--",
+        "GNINA CNNscore": "-.",
+        "GNINA CNNaffinity (pK_d)": ":",
+        "GNINA VS Score (CNNscore * CNNaffinity)": "-.",
+        "Consensus Score (AF3 * GNINA_VS)": "-"
+    }
+    
+    linewidths = {
+        "AF3 ipTM": 1.8,
+        "AF3 PAE_min (Inv: 1/PAE)": 2.2,
+        "AF3 Alone (ipTM / PAE_min)": 2.0,
+        "GNINA CNNscore": 1.8,
+        "GNINA CNNaffinity (pK_d)": 1.8,
+        "GNINA VS Score (CNNscore * CNNaffinity)": 2.0,
+        "Consensus Score (AF3 * GNINA_VS)": 2.8
     }
     
     for name, y_scores in scores_dict.items():
@@ -144,14 +127,9 @@ def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval
         precision, recall, _ = precision_recall_curve(y_true, y_scores)
         pr_auc_val = average_precision_score(y_true, y_scores)
         
-        if "Shifted Inverse Consensus" in name:
-            c = "#2CA02C"  # Emerald Green (Highlight)
-            ls = "-"
-            lw = 3.0
-        else:
-            c = colors.get(name, "#333333")
-            ls = linestyles.get(name, "-")
-            lw = 2.0
+        c = colors.get(name, "#333333")
+        ls = linestyles.get(name, "-")
+        lw = linewidths.get(name, 2.0)
             
         ax_roc.plot(fpr, tpr, label=f"{name} (AUC = {roc_auc_val:.4f})", color=c, linestyle=ls, linewidth=lw)
         ax_pr.plot(recall, precision, label=f"{name} (AUC = {pr_auc_val:.4f})", color=c, linestyle=ls, linewidth=lw)
@@ -163,7 +141,7 @@ def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval
     ax_roc.set_xlabel("False Positive Rate (1 - Specificity)", fontsize=12, fontweight='bold')
     ax_roc.set_ylabel("True Positive Rate (Sensitivity)", fontsize=12, fontweight='bold')
     ax_roc.set_title("Receiver Operating Characteristic (ROC)", fontsize=14, fontweight='bold', pad=12)
-    ax_roc.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.95, fontsize=8.8)
+    ax_roc.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.95, fontsize=8.2)
     ax_roc.grid(True, linestyle=':', alpha=0.6)
     
     # PR Panel Details
@@ -174,21 +152,21 @@ def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval
     ax_pr.set_xlabel("Recall (Sensitivity)", fontsize=12, fontweight='bold')
     ax_pr.set_ylabel("Precision (Positive Predictive Value)", fontsize=12, fontweight='bold')
     ax_pr.set_title("Precision-Recall (PR) Curve", fontsize=14, fontweight='bold', pad=12)
-    ax_pr.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.95, fontsize=8.8)
+    ax_pr.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.95, fontsize=8.2)
     ax_pr.grid(True, linestyle=':', alpha=0.6)
     
-    plt.suptitle("Virtual Screening Evaluation: Shifted Inverse Consensus Formulation", fontsize=15, fontweight='bold', y=0.98)
+    plt.suptitle("Virtual Screening Evaluation: All 7 Scoring Metrics (268 Pairs)", fontsize=15, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     os.makedirs(os.path.dirname(os.path.abspath(out_svg)), exist_ok=True)
     fig.savefig(out_svg, format='svg', bbox_inches='tight')
     fig.savefig(out_png, format='png', dpi=300, bbox_inches='tight')
     plt.close(fig)
-    print(f"Exported advanced evaluation vector plot to '{out_svg}'")
-    print(f"Exported advanced evaluation PNG plot to '{out_png}'")
+    print(f"Exported evaluation vector plot to '{out_svg}'")
+    print(f"Exported evaluation PNG plot to '{out_png}'")
 
 def main():
-    parser = argparse.ArgumentParser(description="Evaluate Shifted Inverse Consensus scoring methods.")
+    parser = argparse.ArgumentParser(description="Evaluate 7 virtual screening scoring methods.")
     parser.add_argument('--report-csv', default='results/ranked_pairings_report.csv', help="Report CSV")
     parser.add_argument('--out-svg', default='results/advanced_scoring_eval.svg', help="Output SVG path")
     parser.add_argument('--out-png', default='results/advanced_scoring_eval.png', help="Output PNG path")
@@ -196,29 +174,22 @@ def main():
     args = parser.parse_args()
     
     df = load_and_preprocess_report(args.report_csv)
-    eps_values = [0.1, 0.2, 0.3, 0.5]
-    df = engineer_shifted_features(df, eps_values=eps_values)
-    
     y_true = df['label'].values
     
-    best_eps, eps_metrics = select_best_epsilon(y_true, df, eps_values=eps_values)
-    print(f"Selected Optimal Epsilon: eps = {best_eps}")
-    
-    # Build complete dictionary including all epsilon variants + baseline methods
     all_scores_dict = {
         "AF3 ipTM": df['ipTM'].values,
+        "AF3 PAE_min (Inv: 1/PAE)": 1.0 / np.maximum(df['PAE_min'].values, 0.01),
         "AF3 Alone (ipTM / PAE_min)": df['AF3_Score'].values,
-        "GNINA VS (CNNscore * CNNaffinity)": df['Gnina_CNN_VS'].values,
-        "Current Consensus": df['Consensus_Score'].values
+        "GNINA CNNscore": df['CNNscore'].values,
+        "GNINA CNNaffinity (pK_d)": df['CNNaffinity'].values,
+        "GNINA VS Score (CNNscore * CNNaffinity)": df['Gnina_CNN_VS'].values,
+        "Consensus Score (AF3 * GNINA_VS)": df['Consensus_Score'].values
     }
-    
-    for eps in eps_values:
-        all_scores_dict[f"Shifted Inverse Consensus (eps = {eps})"] = df[f'S_Shifted_eps_{eps}'].values
         
     metrics_table = compute_metrics_table(y_true, all_scores_dict)
     
     print("\n" + "="*105)
-    print("VIRTUAL SCREENING SCORING METHOD COMPARISON SUMMARY TABLE")
+    print("VIRTUAL SCREENING SCORING METHOD COMPARISON SUMMARY TABLE (268 PAIRS)")
     print("="*105)
     print(f"{'Scoring Method':<45} | {'ROC AUC':<9} | {'PR AUC':<9} | {'Max F1':<9} | {'Bal Acc':<9}")
     print("-"*105)
@@ -226,16 +197,7 @@ def main():
         print(f"{row['Scoring Method']:<45} | {row['ROC AUC']:<9.4f} | {row['PR AUC']:<9.4f} | {row['Max F1']:<9.4f} | {row['Balanced Accuracy']:<9.4f}")
     print("="*105 + "\n")
     
-    # Dict for plotting overlay (Baseline methods + Best Shifted Inverse Consensus variant)
-    plot_scores_dict = {
-        "AF3 ipTM": df['ipTM'].values,
-        "AF3 Alone (ipTM / PAE_min)": df['AF3_Score'].values,
-        "GNINA VS (CNNscore * CNNaffinity)": df['Gnina_CNN_VS'].values,
-        "Current Consensus": df['Consensus_Score'].values,
-        f"Shifted Inverse Consensus (eps = {best_eps})": df[f'S_Shifted_eps_{best_eps}'].values
-    }
-    
-    plot_roc_pr_grid(y_true, plot_scores_dict, out_svg=args.out_svg, out_png=args.out_png)
+    plot_roc_pr_grid(y_true, all_scores_dict, out_svg=args.out_svg, out_png=args.out_png)
 
 if __name__ == '__main__':
     main()
