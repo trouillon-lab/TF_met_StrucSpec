@@ -25,11 +25,16 @@ elif [ -f ".venv/bin/activate" ]; then
     source .venv/bin/activate
 fi
 
+PRED_DIR="${1:-${PRED_DIR:-alphafold3_predictions}}"
+SCORES_CSV="${2:-${SCORES_CSV:-data/processed/gnina_scores.csv}}"
+REDOCKED_DIR="${3:-${REDOCKED_DIR:-data/processed/gnina_redocked_structures}}"
+
 # Run the python rescoring script for this batch chunk
 python scripts/rescore_gnina.py \
     --config config/config.yaml \
-    --predictions-dir alphafold3_predictions \
-    --output data/processed/gnina_scores.csv \
+    --predictions-dir "$PRED_DIR" \
+    --output "$SCORES_CSV" \
+    --save-dir "$REDOCKED_DIR" \
     --batch-index ${SLURM_ARRAY_TASK_ID} \
     --total-batches 15
 

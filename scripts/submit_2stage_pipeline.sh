@@ -50,6 +50,25 @@ if [ -n "$PY_VER_DIR" ]; then
     ln -sf "$(pwd)/venv/bin/activate" "${PY_VER_DIR}.venv/bin/activate" 2>/dev/null || true
 fi
 
+JSON_DIR="${1:-alphafold3_jsons}"
+PRED_DIR="${2:-alphafold3_predictions}"
+SCORES_CSV="${3:-data/processed/gnina_scores.csv}"
+REDOCKED_DIR="${4:-data/processed/gnina_redocked_structures}"
+
+mkdir -p "$JSON_DIR" "$PRED_DIR" "$(dirname "$SCORES_CSV")" "$REDOCKED_DIR"
+
+if [ "$JSON_DIR" != "alphafold3_jsons" ]; then
+    echo "Symlinking alphafold3_jsons -> $JSON_DIR"
+    ln -sfn "$JSON_DIR" alphafold3_jsons
+fi
+if [ "$PRED_DIR" != "alphafold3_predictions" ]; then
+    echo "Symlinking alphafold3_predictions -> $PRED_DIR"
+    ln -sfn "$PRED_DIR" alphafold3_predictions
+fi
+
+# Clear cached TSV to force Snakemake to rescan input JSONs
+rm -f alphafold3_predictions/.alphafold3_datafill_predictions.tsv
+
 # Ensure root config.yaml symlink
 ln -sf config/config.yaml config.yaml 2>/dev/null || true
 
@@ -57,10 +76,10 @@ ln -sf config/config.yaml config.yaml 2>/dev/null || true
 python3 scripts/diagnose_environment.py || echo "Warning: Diagnostics reported missing items."
 
 # Count total input JSON files
-TOTAL_INPUTS=$(ls -1 alphafold3_jsons/*.json 2>/dev/null | wc -l)
+TOTAL_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
 
 if [ "$TOTAL_INPUTS" -eq 0 ]; then
-    echo "Error: No input JSON files found in alphafold3_jsons/"
+    echo "Error: No input JSON files found in $JSON_DIR/"
     exit 1
 fi
 
@@ -70,7 +89,7 @@ if ! command -v batch-infer &> /dev/null; then
 fi
 
 echo "========================================================================"
-echo " Submitting batch-infer for $TOTAL_INPUTS AF3 input pairs"
+echo " Submitting batch-infer for $TOTAL_INPUTS AF3 input pairs ($JSON_DIR -> $PRED_DIR)"
 echo "========================================================================"
 
 # Launch batch-infer start

@@ -249,6 +249,7 @@ def main():
     parser.add_argument('--config', default='config/config.yaml', help="Path to config.yaml")
     parser.add_argument('--predictions-dir', default='alphafold3_predictions', help="AF3 predictions dir")
     parser.add_argument('--output', default='data/processed/gnina_scores.csv', help="Path to write scores csv")
+    parser.add_argument('--save-dir', default='data/processed/gnina_redocked_structures', help="Path to save redocked PDB/SDF structures")
     parser.add_argument('--batch-index', type=int, default=1, help="Current SLURM job array task 1-indexed ID")
     parser.add_argument('--total-batches', type=int, default=1, help="Total number of parallel batch tasks")
     parser.add_argument('--merge', action='store_true', help="Merge chunk CSV files into final output CSV")
@@ -319,7 +320,7 @@ def main():
     print(f"Batch {args.batch_index}/{args.total_batches}: Rescoring {len(zip_files)} prediction pairs...")
     for z_path in zip_files:
         print(f"Rescoring: {os.path.basename(z_path)}...")
-        res = rescore_pair(z_path, temp_root, mode, autobox_add)
+        res = rescore_pair(z_path, temp_root, mode, autobox_add, save_dir=args.save_dir)
         if res:
             scores.append(res)
             
