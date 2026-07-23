@@ -160,27 +160,33 @@ def generate_svg_slopegraph(validation_data, output_path):
         f.write("\n".join(svg))
     print(f"Generated validation SVG plot at '{output_path}'.")
 
-def load_true_positives(pairings_csv):
-    """Loads true positives from dataset CSV files."""
-    tp_set = {
-        "AraC_arabinose", "AraC_D-fucose",
-        "AcrR_ethidium", "AcrR_proflavin", "AcrR_R6G",
-        "TyrR_L-tryptophan", "TyrR_L-phenylalanine", "TyrR_L-tyrosine",
-        "CysB_O-acetyl-L-serine", "CysB_Thiosulphate"
-    }
-    
-    # Read remaining 248 dataset csv if present
-    rem_csv = 'data/processed/pairings_remaining_248.csv'
-    if os.path.exists(rem_csv):
-        with open(rem_csv, 'r', encoding='utf-8') as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                if row.get('Label', '').strip().lower() == 'positive':
+import re
+
+def sanitize_key(s):
+    return re.sub(r'[^a-zA-Z0-9]', '', s).lower()
+
+def load_gt_map():
+    """Loads ground truth mapping (TF_Name, Ligand_Name, Is_Positive) from dataset CSV files."""
+    gt_map = {}
+    for csv_file in ['data/processed/pairings_subset_20.csv', 'data/processed/pairings_remaining_248.csv']:
+        if os.path.exists(csv_file):
+            with open(csv_file, 'r', encoding='utf-8') as f:
+                for row in csv.DictReader(f):
                     tf = row['TF_Name'].strip()
                     lig = row['Ligand_Name'].strip()
-                    tp_set.add(f"{tf}_{lig}")
-                    
-    return tp_set
+                    is_pos = row.get('Label', '').strip().lower() == 'positive'
+                    s_key = sanitize_key(f"{tf}_{lig}")
+                    gt_map[s_key] = {
+                        "tf_name": tf,
+                        "ligand_name": lig,
+                        "is_positive": is_pos
+                    }
+    return gt_map
+
+def load_true_positives(pairings_csv=None):
+    """Compatibility wrapper returning set of true positive TF_Ligand keys."""
+    gt = load_gt_map()
+    return {f"{v['tf_name']}_{v['ligand_name']}" for v in gt.values() if v['is_positive']}
 
 def main():
     parser = argparse.ArgumentParser(description="Rank candidates and compile virtual screening reports.")
@@ -192,9 +198,10 @@ def main():
     
     args = parser.parse_args()
     
-    # 1. Load True Positives
-    true_positives = load_true_positives(args.pairings)
-    print(f"Loaded {len(true_positives)} annotated true positives.")
+    # 1. Load Ground Truth Mapping
+    gt_map = load_gt_map()
+    pos_cnt = sum(1 for v in gt_map.values() if v['is_positive'])
+    print(f"Loaded ground truth mapping for {len(gt_map)} dataset pairs ({pos_cnt} true positives).")
     
     # 2. Load Gnina scores
     gnina_data = {}
@@ -227,11 +234,17 @@ def main():
         basename = os.path.splitext(z_file)[0]
         pair_name = basename.replace("_predictions", "")
         
-        # Split pair name to TF and Ligand (assuming standard delimiter "_")
-        # e.g., TF1_LigandA
-        parts = pair_name.split('_')
-        tf_name = parts[0] if len(parts) > 0 else "Unknown_TF"
-        ligand_name = parts[1] if len(parts) > 1 else "Unknown_Ligand"
+        # Match pair against gt_map using sanitized key
+        s_key = sanitize_key(pair_name)
+        if s_key in gt_map:
+            tf_name = gt_map[s_key]['tf_name']
+            ligand_name = gt_map[s_key]['ligand_name']
+            is_tp = gt_map[s_key]['is_positive']
+        else:
+            parts = pair_name.split('_', 1)
+            tf_name = parts[0] if len(parts) > 0 else "Unknown_TF"
+            ligand_name = parts[1] if len(parts) > 1 else "Unknown_Ligand"
+            is_tp = False
         
         af3_metrics = parse_af3_summary(zip_path)
         if not af3_metrics:
@@ -267,7 +280,7 @@ def main():
             "Gnina_CNNaffinity": cnn_a,
             "Gnina_CNN_VS": cnn_vs,
             "Consensus_Score": consensus_score,
-            "Is_True_Positive": pair_name in true_positives
+            "Is_True_Positive": is_tp
         })
         
     if not compiled_results:

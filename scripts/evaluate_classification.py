@@ -195,9 +195,8 @@ def run_classification_analysis(
     with open(report_csv, 'r', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for r in reader:
-            tf = r['TF_Name'].strip()
-            lig = r['Ligand_Name'].strip()
-            r['is_tp'] = 1 if (tf, lig) in pos_pairs else 0
+            is_tp = r.get('Is_True_Positive', '').strip().lower() in ['true', '1', 'yes', 't', 'positive']
+            r['is_tp'] = 1 if is_tp else 0
             rows.append(r)
             
     y_true = np.array([r['is_tp'] for r in rows])
