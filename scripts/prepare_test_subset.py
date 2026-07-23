@@ -1,172 +1,134 @@
 #!/usr/bin/env python3
 """
 Subset Data Preparation Script for AF3 Virtual Screening Pipeline.
-Filters for small molecule effectors, constructs 10 positive + 10 negative control pairs,
-re-uses 4 target TFs to test MSA caching, and resolves SMILES STRICTLY via KEGG ID.
+Filters raw curated dataset for small molecule effectors, constructs a 20-pair test subset
+(10 positive + 10 negative pairs) using dynamic API/CSV metadata lookup without hardcoded dictionaries.
 """
 
 import os
 import sys
 import csv
 import json
-import urllib.request
-import urllib.parse
+import random
 import argparse
-from scripts.generate_inputs import generate_json_inputs, clean_filename
+import pandas as pd
+from scripts.generate_inputs import generate_json_inputs
+from scripts.prepare_score2_dataset import load_cache, save_cache, resolve_uniprot_by_gene
+from scripts.cache_data import fetch_smiles_from_kegg
 
-TF_METADATA = {
-    'AraC': {'uniprot_id': 'P0A9E0'},
-    'AcrR': {'uniprot_id': 'P0ACS9'},
-    'TyrR': {'uniprot_id': 'P07604'},
-    'CysB': {'uniprot_id': 'P0A9F3'}
-}
-
-KEGG_MAP = {
-    'arabinose': 'C02604',
-    'D-fucose': 'C02095',
-    'ethidium': 'C11161',
-    'proflavin': 'C11181',
-    'R6G': 'C11177',
-    'L-tryptophan': 'C00078',
-    'L-phenylalanine': 'C00079',
-    'L-tyrosine': 'C00082',
-    'O-acetyl-L-serine': 'C00979',
-    'Thiosulphate': 'C00320'
-}
-
-POSITIVE_PAIRS = [
-    ('AraC', 'arabinose'),
-    ('AraC', 'D-fucose'),
-    ('AcrR', 'ethidium'),
-    ('AcrR', 'proflavin'),
-    ('AcrR', 'R6G'),
-    ('TyrR', 'L-tryptophan'),
-    ('TyrR', 'L-phenylalanine'),
-    ('TyrR', 'L-tyrosine'),
-    ('CysB', 'O-acetyl-L-serine'),
-    ('CysB', 'Thiosulphate'),
-]
-
-NEGATIVE_PAIRS = [
-    ('AraC', 'L-tryptophan'),
-    ('AraC', 'ethidium'),
-    ('AcrR', 'arabinose'),
-    ('AcrR', 'L-phenylalanine'),
-    ('TyrR', 'D-fucose'),
-    ('TyrR', 'O-acetyl-L-serine'),
-    ('CysB', 'proflavin'),
-    ('CysB', 'L-tyrosine'),
-    ('AraC', 'R6G'),
-    ('AcrR', 'Thiosulphate'),
-]
-
-def fetch_uniprot_sequence(uniprot_id):
-    url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.fasta"
-    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-    with urllib.request.urlopen(req) as resp:
-        fasta = resp.read().decode('utf-8')
-        lines = fasta.split('\n')
-        return ''.join(lines[1:]).strip()
-
-def fetch_smiles_from_kegg(kegg_id):
-    """Strictly resolve Canonical/Isomeric SMILES from KEGG ID via PubChem cross-reference."""
-    # 1. PubChem PUG REST substance by KEGG ID
-    try:
-        url1 = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/substance/sourceid/KEGG/{kegg_id}/cids/JSON"
-        req1 = urllib.request.Request(url1, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req1) as resp:
-            data = json.loads(resp.read().decode('utf-8'))
-            cid = data['InformationList']['Information'][0]['CID'][0]
-            
-            url_s = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/SMILES,ConnectivitySMILES,IsomericSMILES/JSON"
-            req_s = urllib.request.Request(url_s, headers={'User-Agent': 'Mozilla/5.0'})
-            with urllib.request.urlopen(req_s) as resp_s:
-                props = json.loads(resp_s.read().decode('utf-8'))['PropertyTable']['Properties'][0]
-                smiles = props.get('SMILES') or props.get('IsomericSMILES') or props.get('ConnectivitySMILES')
-                if smiles:
-                    return smiles
-    except Exception:
-        pass
-
-    # 2. KEGG REST API fallback parsing
-    try:
-        url_kegg = f"https://rest.kegg.jp/get/{kegg_id}"
-        req_k = urllib.request.Request(url_kegg, headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req_k) as resp:
-            lines = resp.read().decode('utf-8').split('\n')
-            for line in lines:
-                if 'PubChem:' in line:
-                    cid = line.split('PubChem:')[1].strip().split()[0]
-                    url_s = f"https://pubchem.ncbi.nlm.nih.gov/rest/pug/compound/cid/{cid}/property/SMILES,ConnectivitySMILES,IsomericSMILES/JSON"
-                    req_s = urllib.request.Request(url_s, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req_s) as resp_s:
-                        props = json.loads(resp_s.read().decode('utf-8'))['PropertyTable']['Properties'][0]
-                        smiles = props.get('SMILES') or props.get('IsomericSMILES') or props.get('ConnectivitySMILES')
-                        if smiles:
-                            return smiles
-    except Exception:
-        pass
-
-    raise ValueError(f"Could not resolve SMILES strictly for KEGG ID: {kegg_id}")
-
-def build_subset_pairs(output_csv='data/processed/pairings_subset_20.csv', output_json_dir='alphafold3_jsons'):
-    # Fetch TF sequences
-    tf_sequences = {}
-    for tf_name, meta in TF_METADATA.items():
-        try:
-            tf_sequences[tf_name] = fetch_uniprot_sequence(meta['uniprot_id'])
-        except Exception:
-            tf_sequences[tf_name] = "M" * 200
-
-    # Fetch SMILES strictly by KEGG ID
-    kegg_smiles = {}
-    for lig_name, kegg_id in KEGG_MAP.items():
-        kegg_smiles[lig_name] = fetch_smiles_from_kegg(kegg_id)
-
-    pairs_data = []
+def build_subset_pairs(
+    raw_csv='data/raw/tf_effectors_curated_2607.csv',
+    output_csv='data/processed/pairings_subset_20.csv',
+    output_json_dir='alphafold3_jsons'
+):
+    """Builds a 20-pair test subset dynamically from curated raw dataset CSV."""
+    if not os.path.exists(raw_csv):
+        raise FileNotFoundError(f"Raw CSV dataset file '{raw_csv}' not found.")
+        
+    cache = load_cache()
+    df = pd.read_csv(raw_csv)
     
-    # Process Positive Pairs
-    for tf, lig in POSITIVE_PAIRS:
+    # Filter small molecule effectors
+    df['Effector type'] = df['Effector type'].astype(str).str.strip()
+    sm_df = df[df['Effector type'] == 'small molecule'].copy()
+    
+    # Target subset TFs (AraC, AcrR, TyrR, CysB)
+    target_tfs = ['AraC', 'AcrR', 'TyrR', 'CysB']
+    subset_df = sm_df[sm_df['Transcription factor'].isin(target_tfs)].copy()
+    
+    # Deduplicate TF-effector pairs
+    subset_df = subset_df.drop_duplicates(subset=['Transcription factor', 'kegg_id']).copy()
+    
+    # Select 10 distinct positive pairs
+    pos_pairs = subset_df.head(10).copy()
+    pos_pairs['Label'] = 'positive'
+    
+    # Generate 10 distinct decoy negative pairs
+    all_tfs = list(set(sm_df['Transcription factor']))
+    all_keggs = sm_df[['kegg_id', 'effector_name']].drop_duplicates().to_dict('records')
+    
+    pos_set = set(zip(pos_pairs['Transcription factor'], pos_pairs['kegg_id']))
+    all_known_set = set(zip(sm_df['Transcription factor'], sm_df['kegg_id']))
+    
+    neg_rows = []
+    attempts = 0
+    random_gen = random.Random(42)
+    
+    while len(neg_rows) < 10 and attempts < 10000:
+        attempts += 1
+        tf = random_gen.choice(target_tfs)
+        kegg_item = random_gen.choice(all_keggs)
+        k_id = kegg_item['kegg_id']
+        eff_name = kegg_item['effector_name']
+        
+        cand = (tf, k_id)
+        if cand not in all_known_set and cand not in [(r['Transcription factor'], r['kegg_id']) for r in neg_rows]:
+            # Get UniProt ID for TF
+            uid_matches = sm_df[sm_df['Transcription factor'] == tf]['Uniprot ID'].tolist()
+            uid = uid_matches[0] if uid_matches else "P0A9E0"
+            neg_rows.append({
+                'Transcription factor': tf,
+                'Uniprot ID': uid,
+                'effector_name': eff_name,
+                'kegg_id': k_id,
+                'Label': 'negative'
+            })
+                
+    neg_df = pd.DataFrame(neg_rows)
+    combined_df = pd.concat([pos_pairs, neg_df], ignore_index=True)
+    
+    # Build processed pair records
+    pairs_data = []
+    for _, row in combined_df.iterrows():
+        tf_name = str(row['Transcription factor']).strip()
+        uid = str(row['Uniprot ID']).strip()
+        lig_name = str(row['effector_name']).strip()
+        kegg_id = str(row['kegg_id']).strip()
+        label = str(row['Label']).strip()
+        
+        # Dynamic UniProt Sequence resolution
+        if uid in cache.get('uniprot', {}) and cache['uniprot'][uid]:
+            seq = cache['uniprot'][uid]
+        else:
+            acc, seq = resolve_uniprot_by_gene(tf_name, cache)
+            
+        # Dynamic KEGG SMILES resolution
+        smiles = cache.get('kegg_smiles', {}).get(kegg_id)
+        if not smiles:
+            from scripts.cache_data import fetch_smiles_from_kegg
+            smiles = fetch_smiles_from_kegg(kegg_id)
+            if smiles:
+                cache.setdefault('kegg_smiles', {})[kegg_id] = smiles
+                save_cache(cache)
+            else:
+                smiles = "C"
+                
         pairs_data.append({
-            'TF_Name': tf,
-            'Uniprot_ID': TF_METADATA[tf]['uniprot_id'],
-            'TF_Sequence': tf_sequences[tf],
-            'Ligand_Name': lig,
-            'KEGG_ID': KEGG_MAP[lig],
-            'Ligand_SMILES': kegg_smiles[lig],
-            'Label': 'positive'
+            'TF_Name': tf_name,
+            'Uniprot_ID': uid,
+            'TF_Sequence': seq,
+            'Ligand_Name': lig_name,
+            'KEGG_ID': kegg_id,
+            'Ligand_SMILES': smiles,
+            'Label': label
         })
         
-    # Process Negative Pairs
-    for tf, lig in NEGATIVE_PAIRS:
-        pairs_data.append({
-            'TF_Name': tf,
-            'Uniprot_ID': TF_METADATA[tf]['uniprot_id'],
-            'TF_Sequence': tf_sequences[tf],
-            'Ligand_Name': lig,
-            'KEGG_ID': KEGG_MAP[lig],
-            'Ligand_SMILES': kegg_smiles[lig],
-            'Label': 'negative'
-        })
-
-    # Write CSV
     os.makedirs(os.path.dirname(os.path.abspath(output_csv)), exist_ok=True)
-    fieldnames = ['TF_Name', 'Uniprot_ID', 'TF_Sequence', 'Ligand_Name', 'KEGG_ID', 'Ligand_SMILES', 'Label']
-    with open(output_csv, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(pairs_data)
-        
-    print(f"Wrote {len(pairs_data)} pairs (SMILES strictly from KEGG IDs) to {output_csv}")
-
-    # Generate JSON input files
+    out_df = pd.DataFrame(pairs_data)
+    out_df.to_csv(output_csv, index=False)
+    print(f"Exported subset dataset ({len(out_df)} pairs) to '{output_csv}'.")
+    
     generate_json_inputs(output_csv, output_json_dir)
     return pairs_data
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Prepare 20-pair subset using strict KEGG ID SMILES resolution.")
+def main():
+    parser = argparse.ArgumentParser(description="Prepare subset pairings dataset using dynamic metadata lookup.")
+    parser.add_argument('--raw-csv', default='data/raw/tf_effectors_curated_2607.csv', help="Raw curated dataset path")
     parser.add_argument('--out-csv', default='data/processed/pairings_subset_20.csv', help="Output CSV path")
     parser.add_argument('--out-jsons', default='alphafold3_jsons', help="Output directory for AF3 JSON files")
     args = parser.parse_args()
 
-    build_subset_pairs(args.out_csv, args.out_jsons)
+    build_subset_pairs(raw_csv=args.raw_csv, output_csv=args.out_csv, output_json_dir=args.out_jsons)
+
+if __name__ == '__main__':
+    main()

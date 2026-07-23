@@ -15,12 +15,11 @@ venv*/
 logs/
 
 # Generated data, input JSONs & predictions (pipeline data/artifacts)
-alphafold3_jsons/
-alphafold3_jsons_remaining/
-alphafold3_predictions/
-alphafold3_msas/
-alphafold3_datafill/
-alphafold3_missing/
+alphafold3_jsons*/
+alphafold3_predictions*/
+alphafold3_msas*/
+alphafold3_datafill*/
+alphafold3_missing*/
 data/
 results/
 
@@ -30,6 +29,5 @@ project_scope.md
 
 # Symlinks, submodules and binary executables created during setup
 workflow
-config.yaml
 bin/
 software/
