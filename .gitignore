@@ -9,17 +9,20 @@ venv/
 venv*/
 .venv/
 
-# Cluster build logs & Snakemake temporary files
+# Cluster build logs, SLURM logs & Snakemake temporary files
 .snakemake*/
 .batch-infer.*
 logs/
+slurm-*.out
+slurm-*.err
+slurm-*.log
 
-# Generated data, input JSONs & predictions (pipeline data/artifacts)
-alphafold3_jsons*/
-alphafold3_predictions*/
-alphafold3_msas*/
-alphafold3_datafill*/
-alphafold3_missing*/
+# Generated data, input JSONs & predictions (pipeline data/artifacts, including symlinks)
+alphafold3_jsons*
+alphafold3_predictions*
+alphafold3_msas*
+alphafold3_datafill*
+alphafold3_missing*
 data/
 results/
 
@@ -28,6 +31,7 @@ pipeline_state.md
 project_scope.md
 
 # Symlinks, submodules and binary executables created during setup
+config.yaml
 workflow
 bin/
 software/
