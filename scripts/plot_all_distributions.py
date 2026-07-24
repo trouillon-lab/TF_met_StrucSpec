@@ -89,7 +89,8 @@ def generate_distribution_diagnostics(
     # Hide the 8th empty subplot
     fig.delaxes(axes_flat[7])
     
-    plt.suptitle("Distribution Behavior & Scale Characteristics across All 7 Virtual Screening Scores (268 Pairs)", fontsize=14, fontweight='bold', y=0.98)
+    n_pairs = len(df)
+    plt.suptitle(f"Distribution Behavior & Scale Characteristics across All 7 Virtual Screening Scores ({n_pairs} Pairs)", fontsize=14, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.96])
     
     os.makedirs(os.path.dirname(os.path.abspath(out_hist_svg)), exist_ok=True)

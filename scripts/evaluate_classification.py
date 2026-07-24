@@ -179,7 +179,8 @@ def plot_score_distributions(rows, out_svg='results/classification_score_distrib
         ax.set_ylabel(title if idx == 0 else "", fontsize=10.5, fontweight='bold')
         ax.legend(loc='upper right', frameon=True, fontsize=8.0)
         
-    plt.suptitle("Score Distributions & Decision Thresholds across All 7 Metrics (268 Pairs)", fontsize=14, fontweight='bold', y=1.03)
+    n_pairs = len(rows)
+    plt.suptitle(f"Score Distributions & Decision Thresholds across All 7 Metrics ({n_pairs} Pairs)", fontsize=14, fontweight='bold', y=1.03)
     plt.tight_layout()
     
     os.makedirs(os.path.dirname(os.path.abspath(out_svg)), exist_ok=True)

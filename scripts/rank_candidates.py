@@ -168,19 +168,28 @@ def sanitize_key(s):
 def load_gt_map():
     """Loads ground truth mapping (TF_Name, Ligand_Name, Is_Positive) from dataset CSV files."""
     gt_map = {}
-    for csv_file in ['data/processed/pairings_subset_20.csv', 'data/processed/pairings_remaining_248.csv']:
+    csv_files = [
+        'data/processed/pairings_subset_20.csv',
+        'data/processed/pairings_remaining_248.csv',
+        'data/processed/pairings_score2_benchmark.csv'
+    ]
+    for csv_file in csv_files:
         if os.path.exists(csv_file):
             with open(csv_file, 'r', encoding='utf-8') as f:
                 for row in csv.DictReader(f):
                     tf = row['TF_Name'].strip()
                     lig = row['Ligand_Name'].strip()
+                    kegg = row.get('KEGG_ID', '').strip()
                     is_pos = row.get('Label', '').strip().lower() == 'positive'
-                    s_key = sanitize_key(f"{tf}_{lig}")
-                    gt_map[s_key] = {
+                    
+                    item = {
                         "tf_name": tf,
                         "ligand_name": lig,
                         "is_positive": is_pos
                     }
+                    gt_map[sanitize_key(f"{tf}_{lig}")] = item
+                    if kegg:
+                        gt_map[sanitize_key(f"{tf}_{kegg}")] = item
     return gt_map
 
 def load_true_positives(pairings_csv=None):

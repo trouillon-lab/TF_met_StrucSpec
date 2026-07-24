@@ -155,7 +155,8 @@ def plot_roc_pr_grid(y_true, scores_dict, out_svg='results/advanced_scoring_eval
     ax_pr.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.95, fontsize=8.2)
     ax_pr.grid(True, linestyle=':', alpha=0.6)
     
-    plt.suptitle("Virtual Screening Evaluation: All 7 Scoring Metrics (268 Pairs)", fontsize=15, fontweight='bold', y=0.98)
+    n_pairs = len(y_true)
+    plt.suptitle(f"Virtual Screening Evaluation: All 7 Scoring Metrics ({n_pairs} Pairs)", fontsize=15, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     os.makedirs(os.path.dirname(os.path.abspath(out_svg)), exist_ok=True)

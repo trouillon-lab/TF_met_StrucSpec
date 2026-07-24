@@ -151,7 +151,8 @@ def generate_plots(y_true, metrics_data, svg_path='results/roc_pr_curves.svg', p
     ax_pr.legend(loc="lower right", frameon=True, facecolor='white', framealpha=0.9, fontsize=9.5)
     ax_pr.grid(True, linestyle=':', alpha=0.6)
 
-    plt.suptitle("Virtual Screening Evaluation: TF-Small Molecule Specificity (262 Screening Pairs)", fontsize=15, fontweight='bold', y=0.98)
+    n_pairs = len(y_true)
+    plt.suptitle(f"Virtual Screening Evaluation: TF-Small Molecule Specificity ({n_pairs} Pairs)", fontsize=15, fontweight='bold', y=0.98)
     plt.tight_layout(rect=[0, 0, 1, 0.95])
     
     # Save vector SVG and raster PNG
