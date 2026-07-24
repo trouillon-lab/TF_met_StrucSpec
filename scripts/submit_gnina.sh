@@ -6,13 +6,14 @@
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=2G
 #SBATCH --gpus=1
-#SBATCH --array=1-15
+#SBATCH --array=1-40
 
 # ==============================================================================
 # SLURM Job Array Submission Script for Gnina Rescoring on ETH Euler HPC
+# Batched into ~5-pair chunks for high parallel throughput (<4 min walltime)
 # ==============================================================================
 
-echo "Starting Gnina rescoring job array task: ${SLURM_ARRAY_TASK_ID} of 15 (Job ID: ${SLURM_ARRAY_JOB_ID}) at $(date)"
+echo "Starting Gnina rescoring job array task: ${SLURM_ARRAY_TASK_ID} of 40 (Job ID: ${SLURM_ARRAY_JOB_ID}) at $(date)"
 
 # Load required modules on Euler
 module load gcc python openbabel 2>/dev/null
@@ -36,6 +37,6 @@ python scripts/rescore_gnina.py \
     --output "$SCORES_CSV" \
     --save-dir "$REDOCKED_DIR" \
     --batch-index ${SLURM_ARRAY_TASK_ID} \
-    --total-batches 15
+    --total-batches 40
 
 echo "Gnina rescoring batch task ${SLURM_ARRAY_TASK_ID} finished at $(date)"

@@ -59,10 +59,16 @@ mkdir -p "$JSON_DIR" "$PRED_DIR" "$(dirname "$SCORES_CSV")" "$REDOCKED_DIR"
 
 if [ "$JSON_DIR" != "alphafold3_jsons" ]; then
     echo "Symlinking alphafold3_jsons -> $JSON_DIR"
+    if [ -e "alphafold3_jsons" ] && [ ! -L "alphafold3_jsons" ]; then
+        rm -rf alphafold3_jsons
+    fi
     ln -sfn "$JSON_DIR" alphafold3_jsons
 fi
 if [ "$PRED_DIR" != "alphafold3_predictions" ]; then
     echo "Symlinking alphafold3_predictions -> $PRED_DIR"
+    if [ -e "alphafold3_predictions" ] && [ ! -L "alphafold3_predictions" ]; then
+        rm -rf alphafold3_predictions
+    fi
     ln -sfn "$PRED_DIR" alphafold3_predictions
 fi
 
@@ -89,15 +95,45 @@ if ! command -v batch-infer &> /dev/null; then
 fi
 
 echo "========================================================================"
-echo " Submitting batch-infer for $TOTAL_INPUTS AF3 input pairs ($JSON_DIR -> $PRED_DIR)"
+echo " Submitting Automated 3-Stage AF3 Pipeline for $TOTAL_INPUTS input pairs"
 echo "========================================================================"
 
-# Launch batch-infer start
-echo "Executing: batch-infer start alphafold3_datafill_predictions"
-batch-infer start alphafold3_datafill_predictions
+# Step 1: Identify missing TFs requiring MSAs
+echo "[Stage 1] Submitting missing sequence identification..."
+STAGE1_OUTPUT=$(batch-infer start alphafold3_datafill_missing 2>&1)
+JOB1=$(echo "$STAGE1_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
+
+if [ -n "$JOB1" ]; then
+    echo "  -> Stage 1 Lock Job ID: $JOB1"
+    
+    # Step 2: Calculate CPU MSAs (dependent on Stage 1 completing)
+    echo "[Stage 2] Submitting CPU MSA calculations (dependent on Stage 1: $JOB1)..."
+    JOB2=$(sbatch --parsable --dependency=afterok:$JOB1 --job-name=af3_stage2_msas --output=logs/stage2_msas_%j.out --error=logs/stage2_msas_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_msas")
+    echo "  -> Stage 2 Trigger Job ID: $JOB2"
+    
+    # Step 3: Launch GPU Predictions (dependent on Stage 2 completing)
+    echo "[Stage 3] Submitting GPU Predictions (dependent on Stage 2: $JOB2)..."
+    JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions")
+    echo "  -> Stage 3 Trigger Job ID: $JOB3"
+    
+    # Step 4: Launch GNINA Redocking & Rescoring (dependent on Stage 3 completing)
+    echo "[Stage 4] Submitting GNINA Redocking & Rescoring Array (dependent on Stage 3: $JOB3)..."
+    JOB4=$(sbatch --parsable --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
+    echo "  -> Stage 4 GNINA Array Job ID: $JOB4"
+else
+    echo "[Stage 1] All sequences indexed! Submitting GPU predictions & chaining GNINA..."
+    STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions 2>&1)
+    JOB3=$(echo "$STAGE3_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
+    if [ -n "$JOB3" ]; then
+        JOB4=$(sbatch --parsable --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
+        echo "  -> Stage 4 GNINA Array Job ID: $JOB4 (dependent on Stage 3: $JOB3)"
+    else
+        sbatch scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR"
+    fi
+fi
 
 echo "========================================================================"
-echo " batch-infer start submission successfully triggered at $(date)!"
+echo " Fully automated 4-Stage Pipeline successfully chained at $(date)!"
 echo " Track status with: squeue -u \$USER"
 echo " Full submission log saved to: $LOG_FILE"
 echo "========================================================================"
