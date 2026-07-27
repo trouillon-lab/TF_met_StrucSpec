@@ -108,12 +108,12 @@ if [ -n "$JOB1" ]; then
     
     # Step 2: Calculate CPU MSAs (dependent on Stage 1 completing)
     echo "[Stage 2] Submitting CPU MSA calculations (dependent on Stage 1: $JOB1)..."
-    JOB2=$(sbatch --parsable --dependency=afterok:$JOB1 --job-name=af3_stage2_msas --output=logs/stage2_msas_%j.out --error=logs/stage2_msas_%j.err --time=24:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_msas")
+    JOB2=$(sbatch --parsable --dependency=afterok:$JOB1 --job-name=af3_stage2_msas --output=logs/stage2_msas_%j.out --error=logs/stage2_msas_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_msas")
     echo "  -> Stage 2 Trigger Job ID: $JOB2"
     
     # Step 3: Launch GPU Predictions (dependent on Stage 2 completing)
     echo "[Stage 3] Submitting GPU Predictions (dependent on Stage 2: $JOB2)..."
-    JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=24:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions")
+    JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions")
     echo "  -> Stage 3 Trigger Job ID: $JOB3"
     
     # Step 4: Launch GNINA Redocking & Rescoring (dependent on Stage 3 completing)
