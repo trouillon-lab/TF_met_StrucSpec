@@ -142,13 +142,21 @@ else
     if [ -n "$JOB3" ]; then
         JOB4=$(sbatch --parsable --array=1-${N_BATCHES} --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
         echo "  -> Stage 4 GNINA Array Job ID: $JOB4 (dependent on Stage 3: $JOB3)"
+        
+        JOB5=$(sbatch --parsable --dependency=afterany:$JOB4 --job-name=gnina_cleanup --output=logs/gnina_cleanup_%j.out --error=logs/gnina_cleanup_%j.err --time=00:30:00 --wrap="bash scripts/resubmit_missing_gnina.sh '$PRED_DIR' '$SCORES_CSV' '$REDOCKED_DIR'")
+        echo "  -> Stage 5 Auto-Cleanup & Merge Job ID: $JOB5 (dependent on Stage 4: $JOB4)"
     else
-        sbatch --array=1-${N_BATCHES} scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR"
+        JOB4=$(sbatch --parsable --array=1-${N_BATCHES} scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
+        echo "  -> Stage 4 GNINA Array Job ID: $JOB4"
+        
+        JOB5=$(sbatch --parsable --dependency=afterany:$JOB4 --job-name=gnina_cleanup --output=logs/gnina_cleanup_%j.out --error=logs/gnina_cleanup_%j.err --time=00:30:00 --wrap="bash scripts/resubmit_missing_gnina.sh '$PRED_DIR' '$SCORES_CSV' '$REDOCKED_DIR'")
+        echo "  -> Stage 5 Auto-Cleanup & Merge Job ID: $JOB5 (dependent on Stage 4: $JOB4)"
     fi
 fi
 
 echo "========================================================================"
-echo " Fully automated 4-Stage Pipeline successfully chained at $(date)!"
+echo " Fully automated 5-Stage Self-Healing Pipeline successfully chained at $(date)!"
 echo " Track status with: squeue -u \$USER"
 echo " Full submission log saved to: $LOG_FILE"
 echo "========================================================================"
+
