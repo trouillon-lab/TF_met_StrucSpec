@@ -116,19 +116,34 @@ if [ -n "$JOB1" ]; then
     JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions")
     echo "  -> Stage 3 Trigger Job ID: $JOB3"
     
-    # Step 4: Launch GNINA Redocking & Rescoring (dependent on Stage 3 completing)
-    echo "[Stage 4] Submitting GNINA Redocking & Rescoring Array (dependent on Stage 3: $JOB3)..."
-    JOB4=$(sbatch --parsable --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
+    # Step 4: Calculate dynamic array task count for GNINA rescoring (~15 pairs per job)
+    TARGET_CHUNK_SIZE=15
+    NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
+    if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
+    N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
+    if [ "$N_BATCHES" -lt 1 ]; then N_BATCHES=1; fi
+    if [ "$N_BATCHES" -gt 500 ]; then N_BATCHES=500; fi
+
+    echo "[Stage 4] Submitting GNINA Array: $NUM_INPUTS pairs / $TARGET_CHUNK_SIZE per chunk = $N_BATCHES jobs (dependent on Stage 3: $JOB3)..."
+    JOB4=$(sbatch --parsable --array=1-${N_BATCHES} --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
     echo "  -> Stage 4 GNINA Array Job ID: $JOB4"
 else
     echo "[Stage 1] All sequences indexed! Submitting GPU predictions & chaining GNINA..."
     STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions 2>&1)
     JOB3=$(echo "$STAGE3_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
+    
+    TARGET_CHUNK_SIZE=15
+    NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
+    if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
+    N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
+    if [ "$N_BATCHES" -lt 1 ]; then N_BATCHES=1; fi
+    if [ "$N_BATCHES" -gt 500 ]; then N_BATCHES=500; fi
+
     if [ -n "$JOB3" ]; then
-        JOB4=$(sbatch --parsable --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
+        JOB4=$(sbatch --parsable --array=1-${N_BATCHES} --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
         echo "  -> Stage 4 GNINA Array Job ID: $JOB4 (dependent on Stage 3: $JOB3)"
     else
-        sbatch scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR"
+        sbatch --array=1-${N_BATCHES} scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR"
     fi
 fi
 
