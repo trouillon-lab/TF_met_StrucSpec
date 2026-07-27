@@ -2,7 +2,7 @@
 #SBATCH --job-name=gnina_rescore
 #SBATCH --output=logs/gnina_%A_%a.out
 #SBATCH --error=logs/gnina_%A_%a.err
-#SBATCH --time=01:00:00
+#SBATCH --time=04:00:00
 #SBATCH --cpus-per-task=4
 #SBATCH --mem-per-cpu=2G
 #SBATCH --gpus=1
