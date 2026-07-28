@@ -113,7 +113,7 @@ if [ -n "$JOB1" ]; then
     
     # Step 3: Launch GPU Predictions (dependent on Stage 2 completing)
     echo "[Stage 3] Submitting GPU Predictions (dependent on Stage 2: $JOB2)..."
-    JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions")
+    JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=2 --mem-per-cpu=2G --wrap="batch-infer start alphafold3_datafill_predictions . --keep-going")
     echo "  -> Stage 3 Trigger Job ID: $JOB3"
     
     # Step 4: Calculate dynamic array task count for GNINA rescoring (~15 pairs per job)
@@ -129,7 +129,7 @@ if [ -n "$JOB1" ]; then
     echo "  -> Stage 4 GNINA Array Job ID: $JOB4"
 else
     echo "[Stage 1] All sequences indexed! Submitting GPU predictions & chaining GNINA..."
-    STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions 2>&1)
+    STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions . --keep-going 2>&1)
     JOB3=$(echo "$STAGE3_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
     
     TARGET_CHUNK_SIZE=15
