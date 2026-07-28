@@ -73,8 +73,10 @@ def resolve_uniprot_by_gene(gene_name, cache):
                 return acc, seq
     except Exception as e:
         print(f"Warning: UniProt REST API lookup failed for gene '{gene_name}': {e}", file=sys.stderr)
-        
-    return "UNKNOWN_ACC", "M"
+
+    # Return None so the caller can skip this pair rather than submitting a
+    # garbage single-amino-acid sequence to AF3.
+    return None, None
 
 def resolve_smiles_by_bigg(bigg_id, cache):
     bigg_cache = cache.setdefault('bigg_smiles', {})
@@ -128,8 +130,11 @@ def resolve_smiles_by_bigg(bigg_id, cache):
         print(f"Warning: BiGG API lookup failed for '{bigg_id}': {e}", file=sys.stderr)
 
     if not smiles:
-        smiles = "C"
-        
+        print(f"Warning: Could not resolve SMILES for BiGG '{bigg_id}' — pair will be skipped.", file=sys.stderr)
+        bigg_cache[bigg_id] = [name, None]
+        save_cache(cache)
+        return name, None
+
     bigg_cache[bigg_id] = [name, smiles]
     save_cache(cache)
     return name, smiles
@@ -220,11 +225,16 @@ def prepare_weekend_dataset(
     
     # 4. Resolve sequences & SMILES and build output rows
     output_rows = []
-    
+    skipped_pairs = []
+
     print("Resolving sequences and SMILES for positive pairs...")
     for tf_name, bigg_id in pos_pairs_list:
         acc, seq = resolve_uniprot_by_gene(tf_name, cache)
         ligand_name, smiles = resolve_smiles_by_bigg(bigg_id, cache)
+        if seq is None or smiles is None:
+            print(f"  Skipping positive pair {tf_name}/{bigg_id} — missing sequence or SMILES.", file=sys.stderr)
+            skipped_pairs.append((tf_name, bigg_id, 'positive'))
+            continue
         output_rows.append({
             'TF_Name': tf_name,
             'Uniprot_ID': acc,
@@ -234,11 +244,15 @@ def prepare_weekend_dataset(
             'Ligand_SMILES': smiles,
             'Label': 'positive'
         })
-        
+
     print("Resolving sequences and SMILES for decoy negative pairs...")
     for tf_name, bigg_id in sorted(neg_pairs):
         acc, seq = resolve_uniprot_by_gene(tf_name, cache)
         ligand_name, smiles = resolve_smiles_by_bigg(bigg_id, cache)
+        if seq is None or smiles is None:
+            print(f"  Skipping negative pair {tf_name}/{bigg_id} — missing sequence or SMILES.", file=sys.stderr)
+            skipped_pairs.append((tf_name, bigg_id, 'negative'))
+            continue
         output_rows.append({
             'TF_Name': tf_name,
             'Uniprot_ID': acc,
@@ -248,6 +262,11 @@ def prepare_weekend_dataset(
             'Ligand_SMILES': smiles,
             'Label': 'negative'
         })
+
+    if skipped_pairs:
+        print(f"\nSkipped {len(skipped_pairs)} pairs due to failed API lookups:", file=sys.stderr)
+        for tf, bigg, label in skipped_pairs:
+            print(f"  [{label}] {tf} / {bigg}", file=sys.stderr)
         
     # Export CSV
     os.makedirs(os.path.dirname(os.path.abspath(out_csv)), exist_ok=True)

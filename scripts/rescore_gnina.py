@@ -258,21 +258,25 @@ def main():
     
     if args.merge:
         chunk_dir = os.path.dirname(args.output)
-        chunk_files = [os.path.join(chunk_dir, f) for f in os.listdir(chunk_dir) if f.startswith("gnina_chunk_") and f.endswith(".csv")]
-        chunk_files.sort()
-        
+        chunk_files = sorted([
+            os.path.join(chunk_dir, f)
+            for f in os.listdir(chunk_dir)
+            if f.startswith("gnina_chunk_") and f.endswith(".csv")
+        ])
+
         all_rows = []
         for cf in chunk_files:
-            with open(cf, 'r', encoding='utf-8') as f:
-                lines = f.readlines()
-                if len(lines) > 1:
-                    all_rows.extend([l for l in lines[1:] if l.strip()])
-                    
+            with open(cf, 'r', encoding='utf-8', newline='') as f:
+                for row in csv.DictReader(f):
+                    if row.get('TF_Ligand'):
+                        all_rows.append(row)
+
         os.makedirs(os.path.dirname(args.output), exist_ok=True)
-        with open(args.output, 'w', encoding='utf-8') as out_f:
-            out_f.write("TF_Ligand,CNNscore,CNNaffinity,Gnina_Mode\n")
-            out_f.writelines(all_rows)
-            
+        with open(args.output, 'w', encoding='utf-8', newline='') as out_f:
+            writer = csv.DictWriter(out_f, fieldnames=['TF_Ligand', 'CNNscore', 'CNNaffinity', 'Gnina_Mode'])
+            writer.writeheader()
+            writer.writerows(all_rows)
+
         print(f"Merged {len(chunk_files)} chunk CSV files into '{args.output}' ({len(all_rows)} total rescored pairs).")
         return
 

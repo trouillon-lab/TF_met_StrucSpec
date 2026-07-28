@@ -101,7 +101,22 @@ echo "========================================================================"
 # Step 1: Identify missing TFs requiring MSAs
 echo "[Stage 1] Submitting missing sequence identification..."
 STAGE1_OUTPUT=$(batch-infer start alphafold3_datafill_missing 2>&1)
-JOB1=$(echo "$STAGE1_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
+
+# Extract job ID from batch-infer's lock file only if it actually submitted a job.
+# Validate it looks like a SLURM job number before proceeding, to avoid silently
+# submitting downstream stages without the correct dependency.
+if echo "$STAGE1_OUTPUT" | grep -q '\.lock'; then
+    JOB1=$(grep -oE '^[0-9]+$' .batch-infer.lock 2>/dev/null || echo "")
+    if [ -z "$JOB1" ] || ! echo "$JOB1" | grep -qE '^[0-9]+$'; then
+        echo "ERROR: batch-infer reported a lock file but could not extract a valid SLURM job ID."
+        echo "  Lock file contents: $(cat .batch-infer.lock 2>/dev/null || echo 'not found')"
+        echo "  batch-infer output:"
+        echo "$STAGE1_OUTPUT"
+        exit 1
+    fi
+else
+    JOB1=""
+fi
 
 if [ -n "$JOB1" ]; then
     echo "  -> Stage 1 Lock Job ID: $JOB1"
