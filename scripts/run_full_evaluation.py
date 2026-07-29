@@ -73,6 +73,18 @@ def load_ground_truth_map():
                     if kegg:
                         gt_map[sanitize_key(f"{tf}_{kegg}")] = item
 
+    # Dataset 3: keyed by TF_Name + KEGG_ID (BiGG ID), which matches the ZIP filenames
+    d3_file = 'data/processed/pairings_dataset3_weekend.csv'
+    if os.path.exists(d3_file):
+        with open(d3_file, 'r', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                tf = row['TF_Name'].strip()
+                bigg = row['KEGG_ID'].strip()
+                is_pos = row.get('Label', '').strip().lower() == 'positive'
+                if tf and bigg:
+                    item = {'tf_name': tf, 'ligand_name': bigg, 'is_positive': is_pos}
+                    gt_map[sanitize_key(f"{tf}_{bigg}")] = item
+
     return gt_map
 
 
