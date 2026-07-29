@@ -144,17 +144,20 @@ if [ -n "$JOB1" ]; then
     echo "  -> Stage 4 GNINA Array Job ID: $JOB4"
 else
     echo "[Stage 1] All sequences indexed! Submitting GPU predictions & chaining GNINA..."
-    STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions . --keep-going 2>&1)
-    if echo "$STAGE3_OUTPUT" | grep -q '\.lock'; then
+    # Remove stale lock so we can reliably detect whether batch-infer submitted new jobs.
+    # batch-infer does not print the lock path to stdout, so we check the file directly.
+    rm -f .batch-infer.lock
+    batch-infer start alphafold3_datafill_predictions . --keep-going 2>&1
+    if [ -f .batch-infer.lock ]; then
         JOB3=$(grep -oE '^[0-9]+$' .batch-infer.lock 2>/dev/null || echo "")
         if [ -z "$JOB3" ] || ! echo "$JOB3" | grep -qE '^[0-9]+$'; then
-            echo "ERROR: batch-infer reported a lock file but could not extract a valid SLURM job ID."
+            echo "ERROR: batch-infer created a lock file but could not extract a valid SLURM job ID."
             echo "  Lock file contents: $(cat .batch-infer.lock 2>/dev/null || echo 'not found')"
-            echo "  batch-infer output:"
-            echo "$STAGE3_OUTPUT"
             exit 1
         fi
+        echo "  -> Stage 3 AF3 Orchestrator Job ID: $JOB3"
     else
+        echo "  [Stage 3] batch-infer found no work to do (all predictions already complete or up to date)."
         JOB3=""
     fi
     
