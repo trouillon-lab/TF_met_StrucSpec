@@ -27,6 +27,13 @@ def sanitize_key(s):
 def parse_af3_summary(zip_path):
     """Parses chain_pair_iptm, chain_pair_pae_min, and has_clash from an AF3 zip.
 
+    Supports both single-protein predictions (chains A+B) and multi-protein
+    predictions (chains A+B+…+ligand).  The ligand is always the LAST chain by
+    the convention enforced in JSON generation.  For multi-chain predictions,
+    returns the mean protein–ligand ipTM and the min protein–ligand PAE_min so
+    that the score reflects only the TF-complex–ligand interaction, not any
+    protein–protein contact.
+
     Returns a dict {'iptm', 'pae_min', 'has_clash'} on success, or None on any
     failure. Logs a warning to stdout so failures are visible in SLURM logs.
     Silent value substitution is intentionally avoided: a bad ZIP should be
@@ -42,31 +49,29 @@ def parse_af3_summary(zip_path):
             conf_text = zip_ref.read(conf_files[0]).decode('utf-8')
             data = json.loads(conf_text)
 
-            iptm = data.get('chain_pair_iptm')
+            iptm    = data.get('chain_pair_iptm')
             pae_min = data.get('chain_pair_pae_min')
             has_clash = data.get('has_clash', False)
 
-            # Extract [0][1]: protein chain A × ligand chain B interaction.
-            val_iptm = None
-            if iptm and isinstance(iptm, list):
-                if len(iptm) > 0 and isinstance(iptm[0], list) and len(iptm[0]) > 1:
-                    val_iptm = iptm[0][1]
-                elif len(iptm) > 1:
-                    val_iptm = iptm[0]
-
-            val_pae = None
-            if pae_min and isinstance(pae_min, list):
-                if len(pae_min) > 0 and isinstance(pae_min[0], list) and len(pae_min[0]) > 1:
-                    val_pae = pae_min[0][1]
-                elif len(pae_min) > 1:
-                    val_pae = pae_min[0]
-
-            if val_iptm is None:
-                print(f"Warning: Could not extract ipTM from {zip_path} — skipping pair.")
+            if not (iptm and isinstance(iptm, list) and isinstance(iptm[0], list)):
+                print(f"Warning: Unexpected chain_pair_iptm format in {zip_path} — skipping pair.")
                 return None
-            if val_pae is None:
-                print(f"Warning: Could not extract PAE_min from {zip_path} — skipping pair.")
+            if not (pae_min and isinstance(pae_min, list) and isinstance(pae_min[0], list)):
+                print(f"Warning: Unexpected chain_pair_pae_min format in {zip_path} — skipping pair.")
                 return None
+
+            n = len(iptm)  # total chains = n_protein + 1 ligand
+            if n < 2:
+                print(f"Warning: Only {n} chain(s) in {zip_path} — skipping pair.")
+                return None
+
+            # Ligand is the last chain (index n-1); protein chains are 0 … n-2.
+            # For n=2 (single protein + ligand) this reduces to iptm[0][1],
+            # identical to the previous behaviour.
+            lig = n - 1
+            n_prot = lig  # number of protein chains
+            val_iptm = sum(iptm[i][lig] for i in range(n_prot)) / n_prot
+            val_pae  = min(pae_min[i][lig] for i in range(n_prot))
 
             return {
                 "iptm": float(val_iptm),

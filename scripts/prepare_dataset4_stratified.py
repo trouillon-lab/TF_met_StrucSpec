@@ -34,6 +34,7 @@ import json
 import os
 import re
 import sys
+import time
 import urllib.parse
 import urllib.request
 
@@ -41,11 +42,26 @@ import numpy as np
 
 CACHE_FILE = 'data/processed/cache_sequences_smiles.json'
 
-# TFs whose sequences could not be resolved in Dataset 3 (multi-subunit complexes
-# whose combined name does not map to a single UniProt entry).
-EXCLUDED_TFS = {
-    'Dan', 'FhlA', 'FlhDC', 'GadRcs', 'HU', 'HipAB',
-    'HyfR', 'HypT', 'MazEF', 'NfeR', 'PtrR', 'RcsB-BglJ',
+# TFs with no reviewd UniProt entry for E. coli K-12 (taxon 83333).
+# These cannot be modelled and are permanently excluded from all datasets.
+PERMANENTLY_EXCLUDED_TFS = {'NfeR', 'PtrR'}
+
+# Multi-subunit TFs: each entry is a list of (display_name, uniprot_accession)
+# tuples.  The pipeline generates one AF3 protein chain per subunit plus the
+# ligand as the LAST chain.  Single-element entries = TFs whose combined names
+# failed the gene-name lookup used in Dataset 3 but that DO have valid UniProt
+# entries when looked up by accession.
+MULTICHAIN_COMPOSITION = {
+    'FlhDC':     [('FlhD', 'P0A8S9'), ('FlhC', 'P0ABY7')],
+    'HipAB':     [('HipA', 'P23874'), ('HipB', 'P23873')],
+    'MazEF':     [('MazF', 'P0AE70'), ('MazE', 'P0AE72')],
+    'HU':        [('HupA', 'P0ACF0'), ('HupB', 'P0ACF4')],
+    'RcsB-BglJ': [('RcsB', 'P0DMC7'), ('BglJ', 'P39404')],
+    'GadRcs':    [('GadE', 'P63204'), ('RcsB', 'P0DMC7')],
+    'Dan':       [('Dan',  'P76034')],
+    'FhlA':      [('FhlA', 'P19323')],
+    'HyfR':      [('HyfR', 'P71229')],
+    'HypT':      [('HypT', 'P28911')],
 }
 
 # Source files
@@ -84,6 +100,52 @@ def save_cache(cache):
     os.makedirs(os.path.dirname(os.path.abspath(CACHE_FILE)), exist_ok=True)
     with open(CACHE_FILE, 'w', encoding='utf-8') as f:
         json.dump(cache, f, indent=2)
+
+
+def fetch_uniprot_sequence(accession, cache, retries=3):
+    """Fetch canonical sequence from UniProt REST API by accession. Uses cache."""
+    acc_cache = cache.setdefault('uniprot', {})
+    if accession in acc_cache:
+        return acc_cache[accession]
+
+    url = f"https://rest.uniprot.org/uniprotkb/{accession}.fasta"
+    seq = None
+    for attempt in range(retries):
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=15) as r:
+                lines = r.read().decode('utf-8').splitlines()
+            seq = ''.join(l.strip() for l in lines if not l.startswith('>'))
+            break
+        except Exception as e:
+            if attempt < retries - 1:
+                time.sleep(2 ** attempt)
+            else:
+                print(f"  Warning: UniProt fetch failed for {accession}: {e}", file=sys.stderr)
+
+    acc_cache[accession] = seq
+    return seq
+
+
+def get_subunit_sequences(tf_name, cache):
+    """
+    Return list of (name, sequence) for tf_name.
+    For TFs in MULTICHAIN_COMPOSITION, fetches each subunit from UniProt.
+    Returns None if any subunit fetch fails or TF is permanently excluded.
+    """
+    if tf_name in PERMANENTLY_EXCLUDED_TFS:
+        return None
+    if tf_name not in MULTICHAIN_COMPOSITION:
+        return None
+
+    subunits = []
+    for display_name, acc in MULTICHAIN_COMPOSITION[tf_name]:
+        seq = fetch_uniprot_sequence(acc, cache)
+        if not seq:
+            print(f"  Warning: Could not fetch sequence for {display_name} ({acc})", file=sys.stderr)
+            return None
+        subunits.append((display_name, seq))
+    return subunits
 
 
 def resolve_smiles_by_bigg(bigg_id, cache):
@@ -251,15 +313,27 @@ def stratified_sample(pairs, n_per_quintile, seed):
 
 # ── JSON generation ──────────────────────────────────────────────────────────
 
-def write_af3_json(pair_name, tf_seq, smiles, out_dir):
+def write_af3_json(pair_name, subunit_seqs, smiles, out_dir):
+    """
+    Write an AF3 input JSON.
+
+    subunit_seqs : list of (name, sequence) — one entry per protein chain.
+    Protein chains get IDs A, B, C, …; the ligand is the next letter (last
+    chain), matching the convention assumed by parse_af3_summary for scoring.
+    """
+    n_prot = len(subunit_seqs)
+    ligand_chain_id = chr(ord('A') + n_prot)
+
+    sequences = []
+    for i, (_, seq) in enumerate(subunit_seqs):
+        sequences.append({"protein": {"id": chr(ord('A') + i), "sequence": seq}})
+    sequences.append({"ligand": {"id": ligand_chain_id, "smiles": smiles}})
+
     data = {
-        "dialect": "alphafold3",
-        "version": 2,
-        "name":    pair_name,
-        "sequences": [
-            {"protein": {"id": "A", "sequence": tf_seq}},
-            {"ligand":  {"id": "B", "smiles":   smiles}},
-        ],
+        "dialect":    "alphafold3",
+        "version":    2,
+        "name":       pair_name,
+        "sequences":  sequences,
         "modelSeeds": [1],
     }
     path = os.path.join(out_dir, f"{pair_name}.json")
@@ -306,9 +380,10 @@ def main():
     for tf, met, score in cr_pairs:
         if (tf, met) in excluded:
             continue
-        if tf in EXCLUDED_TFS:
+        if tf in PERMANENTLY_EXCLUDED_TFS:
             continue
-        if tf not in tf_seqs:
+        # Accept TFs with a known D3 sequence OR in MULTICHAIN_COMPOSITION
+        if tf not in tf_seqs and tf not in MULTICHAIN_COMPOSITION:
             continue
         valid.append((tf, met, score))
 
@@ -352,23 +427,40 @@ def main():
     skipped_smiles = 0
     json_written   = 0
 
+    skipped_seq = 0
     for tf, met, score in sampled:
         smiles = known_smiles.get(met)
         if not smiles:
             skipped_smiles += 1
             continue
-        seq  = tf_seqs[tf]
-        # name from BiGG cache (first element of tuple) or met
+
+        # Resolve protein chains
+        if tf in MULTICHAIN_COMPOSITION:
+            subunit_seqs = get_subunit_sequences(tf, cache)
+            if not subunit_seqs:
+                print(f"  Skip {tf}/{met}: failed to fetch subunit sequences", file=sys.stderr)
+                skipped_seq += 1
+                continue
+            # TF_Sequence stores subunit seqs joined by "|" (informational)
+            tf_seq_col = '|'.join(seq for _, seq in subunit_seqs)
+        else:
+            single_seq = tf_seqs.get(tf)
+            if not single_seq:
+                skipped_seq += 1
+                continue
+            subunit_seqs = [(tf, single_seq)]
+            tf_seq_col   = single_seq
+
         cached_entry = cache.get('bigg_smiles', {}).get(met)
         ligand_name = (cached_entry[0] if cached_entry else met) or met
         pair_name = clean_filename(f"{tf}_{met}")
 
-        write_af3_json(pair_name, seq, smiles, args.json_dir)
+        write_af3_json(pair_name, subunit_seqs, smiles, args.json_dir)
         json_written += 1
 
         rows.append({
             'TF_Name':      tf,
-            'TF_Sequence':  seq,
+            'TF_Sequence':  tf_seq_col,
             'Ligand_Name':  ligand_name,
             'KEGG_ID':      met,
             'Ligand_SMILES': smiles,
@@ -384,10 +476,15 @@ def main():
         w.writeheader()
         w.writerows(rows)
 
+    # save updated cache (may have new UniProt entries for multi-chain TFs)
+    save_cache(cache)
+
     print(f"  JSONs written:  {json_written}  → {args.json_dir}/")
     print(f"  Pairs CSV:      {args.out_csv}")
     if skipped_smiles:
         print(f"  Skipped (no SMILES): {skipped_smiles}")
+    if skipped_seq:
+        print(f"  Skipped (no seq):    {skipped_seq}")
     print("\nDone.")
 
 
