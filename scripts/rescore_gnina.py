@@ -8,6 +8,7 @@ runs Gnina refinement/redocking, and compiles scores.
 import os
 import sys
 import re
+import csv
 import zipfile
 import shutil
 import subprocess

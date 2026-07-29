@@ -145,7 +145,18 @@ if [ -n "$JOB1" ]; then
 else
     echo "[Stage 1] All sequences indexed! Submitting GPU predictions & chaining GNINA..."
     STAGE3_OUTPUT=$(batch-infer start alphafold3_datafill_predictions . --keep-going 2>&1)
-    JOB3=$(echo "$STAGE3_OUTPUT" | grep -oP '\.lock' >/dev/null && cat .batch-infer.lock 2>/dev/null || echo "")
+    if echo "$STAGE3_OUTPUT" | grep -q '\.lock'; then
+        JOB3=$(grep -oE '^[0-9]+$' .batch-infer.lock 2>/dev/null || echo "")
+        if [ -z "$JOB3" ] || ! echo "$JOB3" | grep -qE '^[0-9]+$'; then
+            echo "ERROR: batch-infer reported a lock file but could not extract a valid SLURM job ID."
+            echo "  Lock file contents: $(cat .batch-infer.lock 2>/dev/null || echo 'not found')"
+            echo "  batch-infer output:"
+            echo "$STAGE3_OUTPUT"
+            exit 1
+        fi
+    else
+        JOB3=""
+    fi
     
     TARGET_CHUNK_SIZE=15
     NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
