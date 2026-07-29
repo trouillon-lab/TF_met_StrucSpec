@@ -132,7 +132,7 @@ if [ -n "$JOB1" ]; then
     echo "  -> Stage 3 Trigger Job ID: $JOB3"
     
     # Step 4: Calculate dynamic array task count for GNINA rescoring (~15 pairs per job)
-    TARGET_CHUNK_SIZE=15
+    TARGET_CHUNK_SIZE=10
     NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
     if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
     N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
@@ -161,7 +161,7 @@ else
         JOB3=""
     fi
     
-    TARGET_CHUNK_SIZE=15
+    TARGET_CHUNK_SIZE=10
     NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
     if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
     N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
