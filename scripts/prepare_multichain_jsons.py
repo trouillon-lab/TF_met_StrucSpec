@@ -60,11 +60,13 @@ MULTICHAIN_COMPOSITION = {
     'FhlA': [('FhlA', 'P19323')],   # fhlA gene product
     'HyfR': [('HyfR', 'P71229')],   # hyfR gene product
     'HypT': [('HypT', 'P28911')],   # yhhH gene product
-    # NfeR, PtrR: not present — skip silently
+    # RegulonDB functional names that don't match UniProt gene symbols:
+    'NfeR': [('NfeR', 'P64588')],   # yqjI — PadR-family iron/nickel repressor, 207 aa
+    'PtrR': [('PtrR', 'P77309')],   # yneJ — HTH-type transcriptional regulator, 293 aa
 }
 
-# Unresolvable TFs (no UniProt entry in E. coli K-12)
-UNRESOLVABLE_TFS = {'NfeR', 'PtrR'}
+# No permanently unresolvable TFs remain — all 12 have been resolved.
+UNRESOLVABLE_TFS = set()
 
 CACHE_FILE  = 'data/processed/cache_sequences_smiles.json'
 ECOLI_TAXON = 83333

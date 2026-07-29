@@ -42,9 +42,10 @@ import numpy as np
 
 CACHE_FILE = 'data/processed/cache_sequences_smiles.json'
 
-# TFs with no reviewd UniProt entry for E. coli K-12 (taxon 83333).
-# These cannot be modelled and are permanently excluded from all datasets.
-PERMANENTLY_EXCLUDED_TFS = {'NfeR', 'PtrR'}
+# All previously excluded TFs have been resolved.  This set is intentionally
+# empty but kept as an extension point in case future analysis adds new TFs
+# whose sequences cannot be resolved.
+PERMANENTLY_EXCLUDED_TFS = set()
 
 # Multi-subunit TFs: each entry is a list of (display_name, uniprot_accession)
 # tuples.  The pipeline generates one AF3 protein chain per subunit plus the
@@ -62,6 +63,9 @@ MULTICHAIN_COMPOSITION = {
     'FhlA':      [('FhlA', 'P19323')],
     'HyfR':      [('HyfR', 'P71229')],
     'HypT':      [('HypT', 'P28911')],
+    # RegulonDB functional names that don't match UniProt gene symbols:
+    'NfeR':      [('NfeR', 'P64588')],   # yqjI — PadR-family iron/nickel repressor, 207 aa
+    'PtrR':      [('PtrR', 'P77309')],   # yneJ — HTH-type transcriptional regulator, 293 aa
 }
 
 # Source files
