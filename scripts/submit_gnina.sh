@@ -4,7 +4,7 @@
 #SBATCH --error=logs/gnina_%A_%a.err
 #SBATCH --time=01:00:00
 #SBATCH --cpus-per-task=4
-#SBATCH --mem-per-cpu=512M
+#SBATCH --mem-per-cpu=256M
 #SBATCH --gpus=1
 
 # ==============================================================================
