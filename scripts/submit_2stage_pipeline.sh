@@ -131,13 +131,16 @@ if [ -n "$JOB1" ]; then
     JOB3=$(sbatch --parsable --dependency=afterok:$JOB2 --job-name=AF3_Pred_Trig --output=logs/stage3_preds_%j.out --error=logs/stage3_preds_%j.err --time=04:00:00 --cpus-per-task=1 --mem-per-cpu=1G --wrap="batch-infer start alphafold3_datafill_predictions . --keep-going")
     echo "  -> Stage 3 Trigger Job ID: $JOB3"
     
-    # Step 4: Calculate dynamic array task count for GNINA rescoring (~15 pairs per job)
-    TARGET_CHUNK_SIZE=10
+    # Step 4: One GNINA job per pair. A single slow/hung pair only wastes its own
+    # job slot instead of losing an entire chunk's completed results (rescore_gnina.py
+    # writes its output CSV once at the end of the batch loop, so any pair still
+    # in-flight at chunk timeout also discards every already-finished pair in that chunk).
+    TARGET_CHUNK_SIZE=1
     NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
     if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
     N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
     if [ "$N_BATCHES" -lt 1 ]; then N_BATCHES=1; fi
-    if [ "$N_BATCHES" -gt 500 ]; then N_BATCHES=500; fi
+    if [ "$N_BATCHES" -gt 15000 ]; then N_BATCHES=15000; fi  # Euler MaxArraySize
 
     echo "[Stage 4] Submitting GNINA Array: $NUM_INPUTS pairs / $TARGET_CHUNK_SIZE per chunk = $N_BATCHES jobs (dependent on Stage 3: $JOB3)..."
     JOB4=$(sbatch --parsable --array=1-${N_BATCHES} --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")
@@ -161,12 +164,12 @@ else
         JOB3=""
     fi
     
-    TARGET_CHUNK_SIZE=10
+    TARGET_CHUNK_SIZE=1
     NUM_INPUTS=$(ls -1 "$JSON_DIR"/*.json 2>/dev/null | wc -l)
     if [ "$NUM_INPUTS" -eq 0 ]; then NUM_INPUTS=6000; fi
     N_BATCHES=$(( (NUM_INPUTS + TARGET_CHUNK_SIZE - 1) / TARGET_CHUNK_SIZE ))
     if [ "$N_BATCHES" -lt 1 ]; then N_BATCHES=1; fi
-    if [ "$N_BATCHES" -gt 500 ]; then N_BATCHES=500; fi
+    if [ "$N_BATCHES" -gt 15000 ]; then N_BATCHES=15000; fi  # Euler MaxArraySize
 
     if [ -n "$JOB3" ]; then
         JOB4=$(sbatch --parsable --array=1-${N_BATCHES} --dependency=afterok:$JOB3 scripts/submit_gnina.sh "$PRED_DIR" "$SCORES_CSV" "$REDOCKED_DIR")

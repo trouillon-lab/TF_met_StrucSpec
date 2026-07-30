@@ -6,7 +6,7 @@
 PRED_DIR="${1:-alphafold3_predictions_dataset3}"
 SCORES_CSV="${2:-data/processed/gnina_scores.csv}"
 REDOCKED_DIR="${3:-data/processed/gnina_redocked_dataset3}"
-TARGET_CHUNK_SIZE=15
+TARGET_CHUNK_SIZE=1
 
 NUM_INPUTS=$(ls -1 "$PRED_DIR"/*.zip 2>/dev/null | wc -l)
 if [ "$NUM_INPUTS" -eq 0 ]; then exit 0; fi
