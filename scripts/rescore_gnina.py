@@ -254,7 +254,9 @@ def main():
     parser.add_argument('--batch-index', type=int, default=1, help="Current SLURM job array task 1-indexed ID")
     parser.add_argument('--total-batches', type=int, default=1, help="Total number of parallel batch tasks")
     parser.add_argument('--merge', action='store_true', help="Merge chunk CSV files into final output CSV")
-    
+    parser.add_argument('--mode', default=None, choices=['score_only', 'minimize', 'redock'],
+                         help="Override config.yaml's gnina.mode for this run (e.g. 'minimize' fallback for pairs where full redocking is intractable)")
+
     args = parser.parse_args()
     
     if args.merge:
@@ -290,7 +292,10 @@ def main():
             if cfg and 'gnina' in cfg:
                 mode = cfg['gnina'].get('mode', mode)
                 autobox_add = cfg['gnina'].get('autobox_add', autobox_add)
-                
+
+    if args.mode:
+        mode = args.mode
+
     print(f"Configured Gnina Mode: '{mode}' with autobox expansion: {autobox_add} Å (Batch {args.batch_index}/{args.total_batches})")
     
     if not os.path.exists(args.predictions_dir):

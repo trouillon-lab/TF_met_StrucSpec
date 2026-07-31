@@ -29,6 +29,12 @@ fi
 PRED_DIR="${1:-${PRED_DIR:-alphafold3_predictions}}"
 SCORES_CSV="${2:-${SCORES_CSV:-data/processed/gnina_scores.csv}}"
 REDOCKED_DIR="${3:-${REDOCKED_DIR:-data/processed/gnina_redocked_structures}}"
+GNINA_MODE="${4:-${GNINA_MODE:-}}"
+
+MODE_ARGS=()
+if [ -n "$GNINA_MODE" ]; then
+    MODE_ARGS=(--mode "$GNINA_MODE")
+fi
 
 # Run the python rescoring script for this batch chunk
 python scripts/rescore_gnina.py \
@@ -37,7 +43,8 @@ python scripts/rescore_gnina.py \
     --output "$SCORES_CSV" \
     --save-dir "$REDOCKED_DIR" \
     --batch-index ${SLURM_ARRAY_TASK_ID} \
-    --total-batches ${TOTAL_BATCHES}
+    --total-batches ${TOTAL_BATCHES} \
+    "${MODE_ARGS[@]}"
 
 echo "Gnina rescoring batch task ${SLURM_ARRAY_TASK_ID} of ${TOTAL_BATCHES} finished at $(date)"
 
