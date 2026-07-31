@@ -49,12 +49,27 @@ def parse_mmcif_atoms(cif_text):
             
     return atoms
 
-def write_pdb(atoms, chain_to_keep, output_path):
-    """Writes atom data to PDB format."""
+def chain_order(atoms):
+    """Returns chain IDs in order of first appearance in the CIF atom records.
+
+    Matches the convention already used for AF3 scoring in pipeline_utils.py's
+    parse_af3_summary: the ligand is always the LAST chain, and any preceding
+    chains are protein subunits (one for a monomeric TF, two+ for a multi-chain
+    complex like FlhDC/HipAB/MazEF/HU/RcsB-BglJ/GadRcs).
+    """
+    seen = []
+    for atom in atoms:
+        chain = atom.get('_atom_site.label_asym_id') or atom.get('_atom_site.auth_asym_id') or 'A'
+        if chain not in seen:
+            seen.append(chain)
+    return seen
+
+def write_pdb(atoms, chains_to_keep, output_path):
+    """Writes atom data for one or more chains to PDB format."""
     with open(output_path, 'w', encoding='utf-8') as f:
         for idx, atom in enumerate(atoms):
             chain = atom.get('_atom_site.label_asym_id') or atom.get('_atom_site.auth_asym_id') or 'A'
-            if chain != chain_to_keep:
+            if chain not in chains_to_keep:
                 continue
                 
             group = atom.get('_atom_site.group_PDB', 'ATOM')
@@ -155,14 +170,23 @@ def rescore_pair(zip_path, temp_root, mode, autobox_add, save_dir="data/processe
             print(f"Error: Failed to parse atoms from {target_cif}")
             return None
             
-        # Split chains
+        # Split chains. The ligand is always the last chain (same convention as
+        # pipeline_utils.parse_af3_summary); everything before it is protein --
+        # one chain for a monomeric TF, two+ for a multi-chain complex.
+        chains = chain_order(atoms)
+        if len(chains) < 2:
+            print(f"Error: Only {len(chains)} chain(s) found in {target_cif} — cannot split protein/ligand.")
+            return None
+        ligand_chain = chains[-1]
+        protein_chains = set(chains[:-1])
+
         protein_pdb = os.path.join(temp_dir, "protein.pdb")
         ligand_pdb = os.path.join(temp_dir, "ligand.pdb")
         ligand_sdf = os.path.join(temp_dir, "ligand.sdf")
         gnina_out_sdf = os.path.join(temp_dir, "gnina_redocked.sdf")
-        
-        write_pdb(atoms, "A", protein_pdb)
-        write_pdb(atoms, "B", ligand_pdb)
+
+        write_pdb(atoms, protein_chains, protein_pdb)
+        write_pdb(atoms, {ligand_chain}, ligand_pdb)
         
         # Convert ligand PDB to SDF using obabel if available
         ligand_path = ligand_pdb
